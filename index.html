@@ -39,6 +39,23 @@
     }
     .top-group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
+    #burgerMenu {
+      display: none;
+      position: absolute;
+      top: calc(56px + var(--safe-top));
+      left: 12px;
+      background: rgba(17, 24, 39, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 12px;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 50;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+      width: 160px;
+    }
+
     #workspace {
       flex: 1;
       position: relative;
@@ -342,12 +359,8 @@
 
   <div id="topBar">
     <div class="top-group">
-      <button class="file-label" onclick="document.getElementById('planUpload').click()" style="height: 38px; padding: 6px 10px;">📷 Plan</button>
-      <input type="file" id="planUpload" accept="image/*" />
+      <button class="btn-util" onclick="toggleBurgerMenu()" style="font-size: 18px; padding: 4px 10px; height: 38px;">☰</button>
       <button class="btn-util" id="btnToggleTune" onclick="toggleTuningDrawer()" style="display: none;">⚙️ Adjust</button>
-    </div>
-
-    <div class="top-group">
       <button class="btn-util" id="btnRecenter" onclick="recenterPlan()" style="display: none; align-items: center; justify-content: center;" title="Reset zoom and center plan">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="15 3 21 3 21 9"></polyline>
@@ -356,10 +369,19 @@
           <line x1="3" y1="21" x2="10" y2="14"></line>
         </svg>
       </button>
+    </div>
+
+    <div class="top-group">
       <button class="btn-util" onclick="undo()" id="btnUndo" disabled>↶</button>
       <button class="btn-util" onclick="redo()" id="btnRedo" disabled>↷</button>
-      <button class="btn-quote" onclick="openQuoteModal()">📊 Quote</button>
     </div>
+  </div>
+
+  <!-- New Burger Menu Drawer -->
+  <div id="burgerMenu">
+    <button class="file-label" onclick="document.getElementById('planUpload').click(); toggleBurgerMenu();" style="width: 100%; height: 38px; padding: 6px 10px;">📷 Plan</button>
+    <input type="file" id="planUpload" accept="image/*" />
+    <button class="btn-quote" onclick="openQuoteModal(); toggleBurgerMenu();" style="width: 100%; height: 38px;">📊 Quote</button>
   </div>
 
   <div id="tuningDrawer">
@@ -697,6 +719,12 @@
       });
     }
 
+    function toggleBurgerMenu() {
+      const menu = document.getElementById('burgerMenu');
+      menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
+      closeClearPopover();
+    }
+
     function checkAlignmentSnap(candidateX, candidateY, skipNodeId = null, currentType = null) {
       const comps = electricalLayer.find('.component');
       let snappedX = candidateX;
@@ -899,7 +927,6 @@
       updateModeIndicatorUI();
     }
 
-    // POINTER TOOL: Deselects all active tools and resets cursor to normal
     function selectPointerTool() {
       currentComponent = null;
       resetWiringSelection();
@@ -1025,7 +1052,6 @@
       stage.batchDraw();
     }
 
-    // ORIGINAL PINCH AND TWO-FINGER PAN LOGIC
     function setupPinchAndPan() {
       let lastCenter = null;
       let lastDist = 0;
@@ -1603,6 +1629,7 @@
     }
 
     function handleStageTap(e) {
+      document.getElementById('burgerMenu').style.display = 'none';
       if (multiTouchDetected) return;
       
       if (e.target === stage || e.target.hasName('planImage')) {
