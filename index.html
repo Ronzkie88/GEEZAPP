@@ -70,6 +70,35 @@
     }
     #container.drag-over { background: #eff6ff; outline: 3px dashed #3b82f6; outline-offset: -10px; }
 
+    /* NEW QUICK START PILL */
+    #welcomePill {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(17, 24, 39, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid #38bdf8;
+      color: #f8fafc;
+      padding: 16px 24px;
+      border-radius: 16px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      z-index: 40;
+      pointer-events: none;
+      width: 85%;
+      max-width: 320px;
+      line-height: 1.5;
+    }
+    .welcome-sub { 
+      font-weight: 400; 
+      color: #cbd5e1; 
+      margin-top: 6px; 
+      font-size: 12px; 
+    }
+
     #tuningDrawer {
       display: none;
       position: absolute;
@@ -117,6 +146,7 @@
     }
 
     #modeIndicator {
+      display: none; /* Hidden on initial load */
       align-self: center;
       margin-top: 6px;
       margin-bottom: 2px;
@@ -416,6 +446,10 @@
   </div>
 
   <div id="workspace">
+    <div id="welcomePill">
+      👋 Welcome to ElecPOC
+      <div class="welcome-sub">Tap <strong>☰</strong> to upload a floor plan, or <strong>🧰</strong> to drop components.</div>
+    </div>
     <div id="container"></div>
   </div>
 
@@ -579,10 +613,12 @@
     let filterReqId = null;
     let opacityReqId = null;
 
-    let currentComponent = null; // null = Default pointer/inspect mode
+    let currentComponent = null; 
     let currentWireType = 'power';
     let currentWireRoutingStyle = 'curved';
     let selectedWireForEdit = null;
+    let multiTouchDetected = false;
+    let isWelcomeActive = true;
 
     const SNAP_THRESHOLD = 8;
     const MAX_SNAP_DISTANCE = 160;
@@ -597,17 +633,13 @@
     };
 
     const counts = { wire: 0 };
-
     let compIdCounter = 0;
     let wireIdCounter = 0;
     let wiringStartNode = null;
     let wires = [];
 
-    let multiTouchDetected = false;
-
     const undoStack = [];
     const redoStack = [];
-
     const RATES = { cablePerMeterRate: 3.50 };
 
     const CATEGORIES = {
@@ -681,8 +713,18 @@
       initStage();
       bindEvents();
       setupPinchAndPan();
-      selectPointerTool(); // Starts in pointer hand mode
+      selectPointerTool(false); 
     });
+
+    function dismissWelcome() {
+      if (!isWelcomeActive) return;
+      isWelcomeActive = false;
+      const pill = document.getElementById('welcomePill');
+      if (pill) pill.style.display = 'none';
+      const indicator = document.getElementById('modeIndicator');
+      if (indicator) indicator.style.display = 'block'; 
+      updateModeIndicatorUI();
+    }
 
     function initStage() {
       const container = document.getElementById('container');
@@ -720,6 +762,7 @@
     }
 
     function toggleBurgerMenu() {
+      dismissWelcome();
       const menu = document.getElementById('burgerMenu');
       menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
       closeClearPopover();
@@ -847,6 +890,7 @@
     }
 
     function openLibraryModal() {
+      dismissWelcome();
       closeClearPopover();
       clearWireControlHandle();
       clearGuideLines();
@@ -877,6 +921,7 @@
     }
 
     function openWireModal() {
+      dismissWelcome();
       closeClearPopover();
       resetWiringSelection();
       clearWireControlHandle();
@@ -904,6 +949,7 @@
     }
 
     function selectQuickTool(tool) {
+      dismissWelcome();
       resetWiringSelection();
       clearWireControlHandle();
       clearGuideLines();
@@ -927,7 +973,7 @@
       updateModeIndicatorUI();
     }
 
-    function selectPointerTool() {
+    function selectPointerTool(isUserAction = true) {
       currentComponent = null;
       resetWiringSelection();
       clearWireControlHandle();
@@ -940,7 +986,13 @@
       document.getElementById('activeToolBtn').innerText = '🧰';
       document.getElementById('activeToolBtn').style.background = '#d97706';
 
-      updateModeIndicatorUI();
+      if (isUserAction) {
+        dismissWelcome();
+      }
+      
+      if (!isWelcomeActive) {
+        updateModeIndicatorUI();
+      }
     }
 
     function closeClearPopover() {
@@ -1165,6 +1217,7 @@
 
     function processImageFile(file) {
       if (!file || !file.type.startsWith('image/')) return;
+      dismissWelcome();
       const reader = new FileReader();
       reader.onload = (e) => {
         const img = new Image();
@@ -1629,6 +1682,7 @@
     }
 
     function handleStageTap(e) {
+      dismissWelcome();
       document.getElementById('burgerMenu').style.display = 'none';
       if (multiTouchDetected) return;
       
