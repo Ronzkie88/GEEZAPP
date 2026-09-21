@@ -1036,6 +1036,9 @@ function handleStageTap(e) {
   dismissWelcome();
   document.getElementById('burgerMenu').style.display = 'none';
 
+  // If the user is pinch-zooming or panning with two fingers, ignore the tap completely
+  if (multiTouchDetected) return;
+
   if (isCalibratingScale) {
     const transform = stage.getAbsoluteTransform().copy().invert();
     const pointer = stage.getPointerPosition();
@@ -1072,8 +1075,6 @@ function handleStageTap(e) {
     return;
   }
 
-  if (multiTouchDetected) return;
-  
   if (e.target === stage || e.target.hasName('planImage')) {
     clearWireControlHandle();
     closeClearPopover();
