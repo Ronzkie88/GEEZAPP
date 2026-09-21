@@ -1,31 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Electrical Layout Canvas PoC</title>
   <script src="https://unpkg.com/konva@9/konva.min.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
 
   <div id="topBar">
     <div class="top-group">
-      <button class="btn-util" onclick="toggleBurgerMenu()"
-        style="font-size: 18px; padding: 4px 10px; height: 38px;">☰</button>
-      <button class="btn-util" id="btnToggleTune" onclick="toggleTuningDrawer()" style="display: none;">⚙️
-        Adjust</button>
-      <button class="btn-util" id="btnRecenter" onclick="recenterPlan()"
-        style="display: none; align-items: center; justify-content: center;" title="Reset zoom and center plan">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-          stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 3 21 3 21 9"></polyline>
-          <polyline points="9 21 3 21 3 15"></polyline>
-          <line x1="21" y1="3" x2="14" y2="10"></line>
-          <line x1="3" y1="21" x2="10" y2="14"></line>
+      <button class="btn-util" onclick="toggleBurgerMenu()" style="font-size: 18px; padding: 4px 10px; height: 38px;">☰</button>
+      <button class="btn-util" id="btnToggleTune" onclick="toggleTuningDrawer()" style="display: none;">⚙️ Adjust</button>
+      <!-- Recenter button with the expand scale icon in the top bar -->
+      <button class="btn-util" id="btnRecenter" onclick="recenterPlan()" style="display: none; align-items: center; justify-content: center; width: 44px; padding: 0;" title="Reset zoom and center plan">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" stroke-width="2" opacity="0.6"/>
+          <path d="M15 3h6v6"/>
+          <path d="M10 14L21 3"/>
+          <path d="M21 15v6h-6"/>
         </svg>
       </button>
     </div>
@@ -37,22 +31,18 @@
   </div>
 
   <div id="burgerMenu">
-    <button class="file-label" onclick="document.getElementById('planUpload').click(); toggleBurgerMenu();"
-      style="width: 100%; height: 38px; padding: 6px 10px;">📷 Plan</button>
+    <button class="file-label" onclick="document.getElementById('planUpload').click(); toggleBurgerMenu();" style="width: 100%; height: 38px; padding: 6px 10px;">📷 Plan</button>
     <input type="file" id="planUpload" accept="image/*" />
-    <button class="btn-quote" onclick="openQuoteModal(); toggleBurgerMenu();" style="width: 100%; height: 38px;">📊
-      Quote</button>
+    <button class="btn-quote" onclick="openQuoteModal(); toggleBurgerMenu();" style="width: 100%; height: 38px;">📊 Quote</button>
   </div>
 
   <div id="tuningDrawer">
     <div class="tuning-row">
       <span>Dark Ink Boost:</span>
-      <input type="checkbox" id="chkFilter" onchange="toggleInkBoostOptions()"
-        style="margin-right: auto; margin-left: 10px;" />
+      <input type="checkbox" id="chkFilter" onchange="toggleInkBoostOptions()" style="margin-right: auto; margin-left: 10px;" />
     </div>
-
-    <div id="inkBoostOptions"
-      style="display: none; flex-direction: column; gap: 12px; border-top: 1px solid #334155; padding-top: 12px; margin-top: 4px;">
+    
+    <div id="inkBoostOptions" style="display: none; flex-direction: column; gap: 12px; border-top: 1px solid #334155; padding-top: 12px; margin-top: 4px;">
       <div class="tuning-row">
         <span>Contrast:</span>
         <input type="range" id="rngContrast" min="0" max="100" value="50" oninput="updatePlanVisuals()" />
@@ -70,28 +60,16 @@
       </div>
     </div>
 
+    <!-- Reverted scale row back to a clean text button -->
     <div class="tuning-row" style="border-top: 1px solid #334155; padding-top: 10px; margin-top: 4px;">
       <span>Scale:</span>
       <span id="lblScaleDisplay" style="color: #38bdf8; font-weight: 600;">Default (45 px/m)</span>
-      <button class="btn-util btn-icon-scale" onclick="startScaleCalibration()" title="Calibrate Scale">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <!-- Bottom-left small box (representing reference source) -->
-          <rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" stroke-width="2" opacity="0.6" />
-          <!-- Top-right expanding arrows (representing scaling out) -->
-          <path d="M15 3h6v6" />
-          <path d="M10 14L21 3" />
-          <!-- Bottom-right corner brackets -->
-          <path d="M21 15v6h-6" />
-        </svg>
-      </button>
+      <button class="btn-util" onclick="startScaleCalibration()" style="height: 28px; padding: 2px 8px; font-size: 11px;">Recalibrate</button>
     </div>
 
     <div style="display: flex; gap: 8px; margin-top: 6px; border-top: 1px solid #334155; padding-top: 10px;">
-      <button class="btn-util" onclick="resetPlanVisuals()" style="height: 38px; padding: 6px 10px; flex: 1;">🔄
-        Reset</button>
-      <button class="btn-del" onclick="deleteUploadedPlan()" style="height: 38px; padding: 6px 10px; flex: 1;">🗑️
-        Delete</button>
+      <button class="btn-util" onclick="resetPlanVisuals()" style="height: 38px; padding: 6px 10px; flex: 1;">🔄 Reset</button>
+      <button class="btn-del" onclick="deleteUploadedPlan()" style="height: 38px; padding: 6px 10px; flex: 1;">🗑️ Delete</button>
       <button class="btn-util" onclick="toggleTuningDrawer()" style="height: 38px; padding: 6px 12px;">Close</button>
     </div>
   </div>
@@ -99,8 +77,7 @@
   <div id="workspace">
     <div id="welcomePill">
       👋 Welcome to ElecPOC
-      <div class="welcome-sub">Tap <strong>☰</strong> to upload a floor plan, or <strong>🧰</strong> to drop components.
-      </div>
+      <div class="welcome-sub">Tap <strong>☰</strong> to upload a floor plan, or <strong>🧰</strong> to drop components.</div>
     </div>
     <div id="scaleBanner">📏 Tap first point of known scale reference</div>
     <div id="container"></div>
@@ -111,30 +88,22 @@
 
     <div id="bottomBar">
       <div class="bottom-group">
-        <button class="btn-library" onclick="openLibraryModal()" id="activeToolBtn"
-          title="Component Library">🧰</button>
+        <button class="btn-library" onclick="openLibraryModal()" id="activeToolBtn" title="Component Library">🧰</button>
         <button class="btn-comp btn-wire" onclick="openWireModal()" id="toolWire">⚡ Wire</button>
       </div>
-
+      
       <div class="bottom-group">
-        <button class="btn-comp btn-pointer selected" onclick="selectPointerTool()" id="toolPointer"
-          title="Pointer / Select Tool (Deselect active tools)"
-          style="align-items: center; justify-content: center; width: 44px; padding: 0;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-            stroke-linecap="round" stroke-linejoin="round">
+        <button class="btn-comp btn-pointer selected" onclick="selectPointerTool()" id="toolPointer" title="Pointer / Select Tool (Deselect active tools)" style="align-items: center; justify-content: center; width: 44px; padding: 0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v3"></path>
             <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v6"></path>
             <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"></path>
-            <path d="M18 8a2 2 0 0 1 2 2v4a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15">
-            </path>
+            <path d="M18 8a2 2 0 0 1 2 2v4a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
           </svg>
         </button>
 
-        <button class="btn-comp btn-del" onclick="selectQuickTool('delete')" id="toolDel"
-          title="Delete Tool (Tap again for Clear All)"
-          style="align-items: center; justify-content: center; width: 44px; padding: 0;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-            stroke-linecap="round" stroke-linejoin="round">
+        <button class="btn-comp btn-del" onclick="selectQuickTool('delete')" id="toolDel" title="Delete Tool (Tap again for Clear All)" style="align-items: center; justify-content: center; width: 44px; padding: 0;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
             <line x1="10" y1="11" x2="10" y2="17"></line>
@@ -145,15 +114,10 @@
     </div>
 
     <div id="clearPopover">
-      <div style="font-size: 11px; font-weight: 700; color: #f87171; text-transform: uppercase; letter-spacing: 0.5px;">
-        Clear Options</div>
-      <button class="btn-util" onclick="clearOnlyWires()"
-        style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">⚡ Clear Wires Only</button>
-      <button class="btn-del" onclick="clearAllLayout()"
-        style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">💥 Clear
-        Everything</button>
-      <button class="btn-util" onclick="closeClearPopover()"
-        style="height: 26px; font-size: 10px; background: transparent; color: #94a3b8;">Cancel</button>
+      <div style="font-size: 11px; font-weight: 700; color: #f87171; text-transform: uppercase; letter-spacing: 0.5px;">Clear Options</div>
+      <button class="btn-util" onclick="clearOnlyWires()" style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">⚡ Clear Wires Only</button>
+      <button class="btn-del" onclick="clearAllLayout()" style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">💥 Clear Everything</button>
+      <button class="btn-util" onclick="closeClearPopover()" style="height: 26px; font-size: 10px; background: transparent; color: #94a3b8;">Cancel</button>
     </div>
   </div>
 
@@ -161,8 +125,7 @@
     <div class="library-content">
       <div class="modal-header-sticky">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <button id="btnLibBack" class="btn-util" onclick="renderCategoryView()"
-            style="display: none; height: 32px; padding: 4px 10px; font-size: 12px;">← Back</button>
+          <button id="btnLibBack" class="btn-util" onclick="renderCategoryView()" style="display: none; height: 32px; padding: 4px 10px; font-size: 12px;">← Back</button>
           <h3 id="libModalTitle" style="margin: 0; font-size: 16px;">Component Library</h3>
         </div>
         <button class="btn-util" onclick="closeLibraryModal()" style="height: 32px; padding: 4px 10px;">✕</button>
@@ -182,24 +145,18 @@
       <div class="modal-scroll-body">
         <div class="wire-selection-card">
           <div class="wire-card-header">
-            <svg width="34" height="20" style="flex-shrink: 0;">
-              <line x1="0" y1="10" x2="34" y2="10" stroke="#2563eb" stroke-width="3" stroke-linecap="round" />
-            </svg>
+            <svg width="34" height="20" style="flex-shrink: 0;"><line x1="0" y1="10" x2="34" y2="10" stroke="#2563eb" stroke-width="3" stroke-linecap="round"/></svg>
             <div style="flex: 1; min-width: 0;">
               <div style="font-weight: 600; color: #60a5fa; font-size: 13px;">Power Wire (Mains)</div>
               <div style="font-size: 10.5px; color: #94a3b8;">GPO power rings & appliance circuits</div>
             </div>
             <div style="display: flex; gap: 6px;">
               <button class="btn-wire-icon" onclick="selectWireWithStyle('power', 'curved')" title="Curved Arc">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <path d="M4 18 C 10 4, 14 4, 20 18" stroke-linecap="round" />
-                </svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 18 C 10 4, 14 4, 20 18" stroke-linecap="round"/></svg>
                 <span style="font-size: 8px; color: #94a3b8; line-height: 1;">Arc</span>
               </button>
               <button class="btn-wire-icon" onclick="selectWireWithStyle('power', 'orthogonal')" title="90° Corner">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <polyline points="4 20 4 6 20 6" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 20 4 6 20 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span style="font-size: 8px; color: #94a3b8; line-height: 1;">90°</span>
               </button>
             </div>
@@ -208,24 +165,18 @@
 
         <div class="wire-selection-card">
           <div class="wire-card-header">
-            <svg width="34" height="20" style="flex-shrink: 0;">
-              <line x1="0" y1="10" x2="34" y2="10" stroke="#d97706" stroke-width="3" stroke-dasharray="6,4" />
-            </svg>
+            <svg width="34" height="20" style="flex-shrink: 0;"><line x1="0" y1="10" x2="34" y2="10" stroke="#d97706" stroke-width="3" stroke-dasharray="6,4"/></svg>
             <div style="flex: 1; min-width: 0;">
               <div style="font-weight: 600; color: #fbbf24; font-size: 13px;">Switch Leg</div>
               <div style="font-size: 10.5px; color: #94a3b8;">Switches to lights, fans & 2-way loops</div>
             </div>
             <div style="display: flex; gap: 6px;">
               <button class="btn-wire-icon" onclick="selectWireWithStyle('switch', 'curved')" title="Curved Arc">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <path d="M4 18 C 10 4, 14 4, 20 18" stroke-linecap="round" />
-                </svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 18 C 10 4, 14 4, 20 18" stroke-linecap="round"/></svg>
                 <span style="font-size: 8px; color: #94a3b8; line-height: 1;">Arc</span>
               </button>
               <button class="btn-wire-icon" onclick="selectWireWithStyle('switch', 'orthogonal')" title="90° Corner">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <polyline points="4 20 4 6 20 6" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 20 4 6 20 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span style="font-size: 8px; color: #94a3b8; line-height: 1;">90°</span>
               </button>
             </div>
@@ -234,24 +185,18 @@
 
         <div class="wire-selection-card">
           <div class="wire-card-header">
-            <svg width="34" height="20" style="flex-shrink: 0;">
-              <line x1="0" y1="10" x2="34" y2="10" stroke="#0d9488" stroke-width="3" stroke-dasharray="2,4" />
-            </svg>
+            <svg width="34" height="20" style="flex-shrink: 0;"><line x1="0" y1="10" x2="34" y2="10" stroke="#0d9488" stroke-width="3" stroke-dasharray="2,4"/></svg>
             <div style="flex: 1; min-width: 0;">
               <div style="font-weight: 600; color: #2dd4bf; font-size: 13px;">Data / Comms</div>
               <div style="font-size: 10.5px; color: #94a3b8;">Cat6 data points, CCTV & access points</div>
             </div>
             <div style="display: flex; gap: 6px;">
               <button class="btn-wire-icon" onclick="selectWireWithStyle('data', 'curved')" title="Curved Arc">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <path d="M4 18 C 10 4, 14 4, 20 18" stroke-linecap="round" />
-                </svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 18 C 10 4, 14 4, 20 18" stroke-linecap="round"/></svg>
                 <span style="font-size: 8px; color: #94a3b8; line-height: 1;">Arc</span>
               </button>
               <button class="btn-wire-icon" onclick="selectWireWithStyle('data', 'orthogonal')" title="90° Corner">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <polyline points="4 20 4 6 20 6" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 20 4 6 20 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span style="font-size: 8px; color: #94a3b8; line-height: 1;">90°</span>
               </button>
             </div>
@@ -278,8 +223,7 @@
       <div class="totals-box">
         <div>Subtotal: <strong id="valSubtotal">$0.00</strong></div>
         <div>GST (10%): <strong id="valGst">$0.00</strong></div>
-        <div style="font-size: 16px; margin-top: 4px;">Total Inc GST: <strong id="valTotal"
-            style="color: #059669;">$0.00</strong></div>
+        <div style="font-size: 16px; margin-top: 4px;">Total Inc GST: <strong id="valTotal" style="color: #059669;">$0.00</strong></div>
       </div>
       <div class="modal-actions">
         <button class="btn-util" onclick="closeQuoteModal()">Close</button>
@@ -290,5 +234,4 @@
 
   <script src="script.js"></script>
 </body>
-
 </html>
