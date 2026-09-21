@@ -387,3 +387,26 @@ table.takeoff-table td { padding: 6px; border-bottom: 1px solid #f1f5f9; }
   #bottomBar { padding: 4px 8px calc(8px + var(--safe-bottom)) 8px; }
   .bottom-group { gap: 6px; }
 }
+
+/* SCALE ICON BUTTON STYLING */
+.btn-icon-scale {
+  height: 32px !important;
+  width: 32px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #334155;
+  color: #38bdf8;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-icon-scale:hover {
+  background: #475569;
+  border-color: #38bdf8;
+}
+.btn-icon-scale:active {
+  transform: scale(0.95);
+}
