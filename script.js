@@ -10,6 +10,11 @@ let selectedWireForEdit = null;
 let multiTouchDetected = false;
 let isWelcomeActive = true;
 
+// Scale calibration state
+let scalePixelsPerMeter = 45; 
+let isCalibratingScale = false;
+let scalePoint1 = null;
+
 const SNAP_THRESHOLD = 8;
 const MAX_SNAP_DISTANCE = 160;
 
@@ -33,30 +38,13 @@ const redoStack = [];
 const RATES = { cablePerMeterRate: 3.50 };
 
 const CATEGORIES = {
-  lighting: {
-    title: 'Lighting & Switching',
-    icon: '💡',
-    desc: 'Downlights, pendants, battens & 1-4G switches'
-  },
-  power: {
-    title: 'Power & Outlets',
-    icon: '🔌',
-    desc: 'GPOs, quad points, USBs & weatherproof'
-  },
-  data: {
-    title: 'Data & Communications',
-    icon: '🌐',
-    desc: '1-5 port data outlets, racks & WAPs'
-  },
-  safety: {
-    title: 'Safety, HVAC & Distribution',
-    icon: '🛡️',
-    desc: 'J-Boxes, DB switchboards, fans & alarms'
-  }
+  lighting: { title: 'Lighting & Switching', icon: '💡', desc: 'Downlights, pendants, battens & 1-4G switches' },
+  power: { title: 'Power & Outlets', icon: '🔌', desc: 'GPOs, quad points, USBs & weatherproof' },
+  data: { title: 'Data & Communications', icon: '🌐', desc: '1-5 port data outlets, racks & WAPs' },
+  safety: { title: 'Safety, HVAC & Distribution', icon: '🛡️', desc: 'J-Boxes, DB switchboards, fans & alarms' }
 };
 
 const CATALOG = {
-  // --- LIGHTING & SWITCHING ---
   downlight: { name: 'LED Downlight', cat: 'lighting', icon: '💡', rate: 95 },
   batten: { name: 'Batten Holder', cat: 'lighting', icon: '🏮', rate: 65 },
   pendant: { name: 'Pendant Luminaire', cat: 'lighting', icon: '🛋️', rate: 120 },
@@ -68,7 +56,6 @@ const CATALOG = {
   dimmer: { name: 'Rotary Dimmer', cat: 'lighting', icon: '🎛️', rate: 115 },
   light2way: { name: '2-Way Switch Mechanism', cat: 'lighting', icon: '🔀', rate: 95 },
 
-  // --- POWER & OUTLETS ---
   gpoSingle: { name: 'Single GPO', cat: 'power', icon: '◽', rate: 75 },
   gpo: { name: 'Double GPO', cat: 'power', icon: '🔌', rate: 85 },
   gpoQuad: { name: 'Quad GPO (4-Point)', cat: 'power', icon: '🔲', rate: 140 },
@@ -76,7 +63,6 @@ const CATALOG = {
   usb: { name: 'USB-A/C Double GPO', cat: 'power', icon: '🔋', rate: 110 },
   isolator: { name: 'A/C Rotary Isolator', cat: 'power', icon: '⚡', rate: 130 },
 
-  // --- DATA & COMMS ---
   data: { name: '1-Port Data Point', cat: 'data', icon: '🌐', rate: 110 },
   data2: { name: '2-Port Data Point', cat: 'data', icon: '🌐²', rate: 135 },
   data3: { name: '3-Port Data Point', cat: 'data', icon: '🌐³', rate: 155 },
@@ -87,7 +73,6 @@ const CATALOG = {
   doorstation: { name: 'Door Station / Intercom', cat: 'data', icon: '🚪', rate: 190 },
   cctv: { name: 'IP Security Camera', cat: 'data', icon: '📷', rate: 160 },
 
-  // --- SAFETY, HVAC & DISTRIBUTION ---
   jbox: { name: 'Junction Box (J-Box)', cat: 'safety', icon: '📦', rate: 35 },
   smoke: { name: 'Photoelectric Smoke Alarm', cat: 'safety', icon: '🚨', rate: 155 },
   fan: { name: 'Ceiling Sweep Fan', cat: 'safety', icon: '🌀', rate: 195 },
@@ -114,6 +99,17 @@ function dismissWelcome() {
   const indicator = document.getElementById('modeIndicator');
   if (indicator) indicator.style.display = 'block'; 
   updateModeIndicatorUI();
+}
+
+function startScaleCalibration() {
+  toggleTuningDrawer();
+  isCalibratingScale = true;
+  scalePoint1 = null;
+  const banner = document.getElementById('scaleBanner');
+  if (banner) {
+    banner.style.display = 'block';
+    banner.innerText = "📏 Tap first point of known scale reference";
+  }
 }
 
 function initStage() {
@@ -233,7 +229,6 @@ function renderCategoryView() {
 
   Object.keys(CATEGORIES).forEach(catKey => {
     const cat = CATEGORIES[catKey];
-
     const card = document.createElement('div');
     card.className = 'cat-card';
     card.onclick = () => renderItemsView(catKey);
@@ -396,16 +391,12 @@ function clearOnlyWires() {
   if (!confirm("Remove all wiring runs from the plan?")) return;
 
   const deletedSnapshot = [...wires];
-
   wires.forEach(w => w.lineNode.destroy());
   wires = [];
   wireLayer.batchDraw();
   counts.wire = 0;
 
-  undoStack.push({
-    action: 'clear_wires',
-    data: deletedSnapshot
-  });
+  undoStack.push({ action: 'clear_wires', data: deletedSnapshot });
   redoStack.length = 0;
   updateStatus();
 }
@@ -416,12 +407,7 @@ function clearAllLayout() {
   if (comps.length === 0 && wires.length === 0) return;
   if (!confirm("Are you sure you want to clear ALL components and wiring? (Background plan will remain)")) return;
 
-  const compSnapshot = comps.map(c => ({
-    id: c.id(),
-    type: c.getAttr('compType'),
-    x: c.x(),
-    y: c.y()
-  }));
+  const compSnapshot = comps.map(c => ({ id: c.id(), type: c.getAttr('compType'), x: c.x(), y: c.y() }));
   const wireSnapshot = [...wires];
 
   wires.forEach(w => w.lineNode.destroy());
@@ -433,11 +419,7 @@ function clearAllLayout() {
   electricalLayer.batchDraw();
   Object.keys(CATALOG).forEach(k => counts[k] = 0);
 
-  undoStack.push({
-    action: 'clear_all',
-    components: compSnapshot,
-    wires: wireSnapshot
-  });
+  undoStack.push({ action: 'clear_all', components: compSnapshot, wires: wireSnapshot });
   redoStack.length = 0;
   updateStatus();
 }
@@ -692,7 +674,6 @@ function createSymbol(type, x, y, id) {
   group.setAttr('compType', type);
   group.add(new Konva.Circle({ radius: COMPONENT_HIT_RADIUS / s, fill: 'transparent', hitStrokeWidth: 0 }));
 
-  // --- LIGHTING & SWITCHING ICONS ---
   if (type === 'downlight') {
     group.add(new Konva.Circle({ radius: 11, fill: '#fef08a', stroke: '#ca8a04', strokeWidth: 2 }));
     group.add(new Konva.Line({ points: [-6, 0, 6, 0], stroke: '#ca8a04', strokeWidth: 1.5 }));
@@ -737,7 +718,6 @@ function createSymbol(type, x, y, id) {
     group.add(new Konva.Circle({ radius: 9, fill: '#fef3c7', stroke: '#d97706', strokeWidth: 2 }));
     group.add(new Konva.Text({ text: '2W', x: -6, y: -5, fontSize: 9, fill: '#b45309', fontStyle: 'bold' }));
 
-  // --- POWER & OUTLET ICONS ---
   } else if (type === 'gpoSingle') {
     group.add(new Konva.Arc({ innerRadius: 0, outerRadius: 11, angle: 180, rotation: 180, fill: '#f0fdf4', stroke: '#16a34a', strokeWidth: 2 }));
     group.add(new Konva.Line({ points: [-3, 3, -1, 0], stroke: '#15803d', strokeWidth: 1.5 }));
@@ -763,7 +743,6 @@ function createSymbol(type, x, y, id) {
     group.add(new Konva.Rect({ x: -10, y: -10, width: 20, height: 20, fill: '#fef3c7', stroke: '#b45309', strokeWidth: 2 }));
     group.add(new Konva.Text({ text: 'ISO', x: -9, y: -5, fontSize: 8, fill: '#b45309', fontStyle: 'bold' }));
 
-  // --- DATA & COMMS ICONS ---
   } else if (type === 'data') {
     group.add(new Konva.RegularPolygon({ sides: 3, radius: 12, fill: '#ccfbf1', stroke: '#0d9488', strokeWidth: 2 }));
     group.add(new Konva.Text({ text: '1', x: -3, y: -3, fontSize: 9, fill: '#0f766e', fontStyle: 'bold' }));
@@ -801,7 +780,6 @@ function createSymbol(type, x, y, id) {
     group.add(new Konva.Rect({ x: -8, y: 0, width: 16, height: 6, fill: '#0f172a', stroke: '#38bdf8', strokeWidth: 1, cornerRadius: 2 }));
     group.add(new Konva.Circle({ radius: 3, x: 0, y: 3, fill: '#38bdf8' }));
 
-  // --- SAFETY, HVAC & INFRASTRUCTURE ICONS ---
   } else if (type === 'jbox') {
     group.add(new Konva.Circle({ radius: 11, fill: '#ffedd5', stroke: '#ea580c', strokeWidth: 2 }));
     group.add(new Konva.Text({ text: 'J', x: -4, y: -5, fontSize: 11, fill: '#c2410c', fontStyle: 'bold' }));
@@ -912,13 +890,7 @@ function createWire(fromId, toId, wireId = null, recordHistory = true, type = nu
     hitStrokeWidth: WIRE_HIT_WIDTH
   });
 
-  const wireRecord = { 
-    id, fromId, toId, type: wType, 
-    routingStyle: rStyle, 
-    midX: midPoint.x, 
-    midY: midPoint.y, 
-    lineNode: line 
-  };
+  const wireRecord = { id, fromId, toId, type: wType, routingStyle: rStyle, midX: midPoint.x, midY: midPoint.y, lineNode: line };
 
   line.on('click tap', (e) => {
     e.cancelBubble = true;
@@ -937,10 +909,7 @@ function createWire(fromId, toId, wireId = null, recordHistory = true, type = nu
   updateStatus();
 
   if (recordHistory) {
-    undoStack.push({ 
-      action: 'add_wire', 
-      data: { id, fromId, toId, type: wType, routingStyle: rStyle, midX: wireRecord.midX, midY: wireRecord.midY } 
-    });
+    undoStack.push({ action: 'add_wire', data: { id, fromId, toId, type: wType, routingStyle: rStyle, midX: wireRecord.midX, midY: wireRecord.midY } });
     redoStack.length = 0;
     updateStatus();
   }
@@ -973,10 +942,7 @@ function showWireControlHandle(w) {
   });
 
   handle.on('dragend', () => {
-    undoStack.push({
-      action: 'move_wire_handle',
-      data: { id: w.id, oldMidX, oldMidY, newMidX: w.midX, newMidY: w.midY }
-    });
+    undoStack.push({ action: 'move_wire_handle', data: { id: w.id, oldMidX, oldMidY, newMidX: w.midX, newMidY: w.midY } });
     redoStack.length = 0;
     updateStatus();
   });
@@ -1033,10 +999,7 @@ function deleteWire(wireId, recordHistory = true) {
   updateStatus();
 
   if (recordHistory) {
-    undoStack.push({ 
-      action: 'delete_wire', 
-      data: { id: w.id, fromId: w.fromId, toId: w.toId, type: w.type, routingStyle: w.routingStyle, midX: w.midX, midY: w.midY } 
-    });
+    undoStack.push({ action: 'delete_wire', data: { id: w.id, fromId: w.fromId, toId: w.toId, type: w.type, routingStyle: w.routingStyle, midX: w.midX, midY: w.midY } });
     redoStack.length = 0;
     updateStatus();
   }
@@ -1062,9 +1025,7 @@ function deleteComponent(node, recordHistory = true) {
     undoStack.push({ 
       action: 'delete_component', 
       data, 
-      cascadeWires: attached.map(w => ({ 
-        id: w.id, fromId: w.fromId, toId: w.toId, type: w.type, routingStyle: w.routingStyle, midX: w.midX, midY: w.midY 
-      })) 
+      cascadeWires: attached.map(w => ({ id: w.id, fromId: w.fromId, toId: w.toId, type: w.type, routingStyle: w.routingStyle, midX: w.midX, midY: w.midY })) 
     });
     redoStack.length = 0;
     updateStatus();
@@ -1074,6 +1035,43 @@ function deleteComponent(node, recordHistory = true) {
 function handleStageTap(e) {
   dismissWelcome();
   document.getElementById('burgerMenu').style.display = 'none';
+
+  if (isCalibratingScale) {
+    const transform = stage.getAbsoluteTransform().copy().invert();
+    const pointer = stage.getPointerPosition();
+    const pos = transform.point(pointer);
+
+    if (!scalePoint1) {
+      scalePoint1 = pos;
+      const banner = document.getElementById('scaleBanner');
+      if (banner) banner.innerText = "📏 Tap second point of known scale reference";
+      
+      const dot = new Konva.Circle({ x: pos.x, y: pos.y, radius: 5, fill: '#7c3aed', name: 'scale-anchor' });
+      guideLayer.add(dot);
+      guideLayer.batchDraw();
+    } else {
+      isCalibratingScale = false;
+      const banner = document.getElementById('scaleBanner');
+      if (banner) banner.style.display = 'none';
+      guideLayer.destroyChildren();
+      guideLayer.batchDraw();
+
+      const pixelDist = Math.hypot(pos.x - scalePoint1.x, pos.y - scalePoint1.y);
+      const realMetersPrompt = prompt("Enter real-world length between these two points in meters (e.g. 2.5):", "2.5");
+      
+      if (realMetersPrompt) {
+        const meters = parseFloat(realMetersPrompt);
+        if (meters > 0) {
+          scalePixelsPerMeter = pixelDist / meters;
+          document.getElementById('lblScaleDisplay').innerText = `${scalePixelsPerMeter.toFixed(1)} px/m`;
+          alert(`Scale calibrated successfully! (${scalePixelsPerMeter.toFixed(1)} pixels/meter)`);
+        }
+      }
+      scalePoint1 = null;
+    }
+    return;
+  }
+
   if (multiTouchDetected) return;
   
   if (e.target === stage || e.target.hasName('planImage')) {
@@ -1093,10 +1091,7 @@ function handleStageTap(e) {
   electricalLayer.batchDraw();
 
   if (counts[currentComponent] !== undefined) counts[currentComponent]++;
-  undoStack.push({
-    action: 'add_component',
-    data: { id: symbol.id(), type: currentComponent, x: pos.x, y: pos.y }
-  });
+  undoStack.push({ action: 'add_component', data: { id: symbol.id(), type: currentComponent, x: pos.x, y: pos.y } });
   redoStack.length = 0;
   updateStatus();
 }
@@ -1216,7 +1211,7 @@ function openQuoteModal() {
   wires.forEach(w => {
     const f = electricalLayer.findOne('#' + w.fromId);
     const t = electricalLayer.findOne('#' + w.toId);
-    if (f && t) totalMeters += (Math.hypot(t.x() - f.x(), t.y() - f.y()) / 45) * 1.15;
+    if (f && t) totalMeters += (Math.hypot(t.x() - f.x(), t.y() - f.y()) / scalePixelsPerMeter) * 1.15;
   });
 
   if (totalMeters > 0) {
