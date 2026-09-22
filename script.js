@@ -1,4 +1,4 @@
-let stage, underlayLayer, wireLayer, electricalLayer, controlLayer, guideLayer;
+let stage, underlayLayer, wallLayer, wireLayer, electricalLayer, controlLayer, guideLayer;
 let planImageNode = null;
 let filterReqId = null;
 let opacityReqId = null;
@@ -9,6 +9,12 @@ let currentWireRoutingStyle = 'curved';
 let selectedWireForEdit = null;
 let multiTouchDetected = false;
 let isWelcomeActive = true;
+
+// Draw Plan state
+let isDrawingPlanMode = false;
+let drawPlanStartPoint = null;
+let drawnWalls = [];
+let wallIdCounter = 0;
 
 // Scale calibration state
 let scalePixelsPerMeter = 45; 
@@ -101,8 +107,32 @@ function dismissWelcome() {
   updateModeIndicatorUI();
 }
 
+function startDrawPlanMode() {
+  dismissWelcome();
+  isDrawingPlanMode = true;
+  drawPlanStartPoint = null;
+  currentComponent = null;
+  resetWiringSelection();
+  clearWireControlHandle();
+  
+  const banner = document.getElementById('scaleBanner');
+  if (banner) {
+    banner.style.display = 'block';
+    banner.innerText = "✏️ Draw Plan: Tap points to sketch walls (Switch tool to finish)";
+  }
+  updateModeIndicatorUI();
+}
+
+function exitDrawPlanMode() {
+  isDrawingPlanMode = false;
+  drawPlanStartPoint = null;
+  const banner = document.getElementById('scaleBanner');
+  if (banner) banner.style.display = 'none';
+}
+
 function startScaleCalibration() {
   toggleTuningDrawer();
+  exitDrawPlanMode();
   isCalibratingScale = true;
   scalePoint1 = null;
   const banner = document.getElementById('scaleBanner');
@@ -122,12 +152,14 @@ function initStage() {
   });
 
   underlayLayer = new Konva.Layer();
+  wallLayer = new Konva.Layer();
   guideLayer = new Konva.Layer();
   wireLayer = new Konva.Layer();
   electricalLayer = new Konva.Layer();
   controlLayer = new Konva.Layer();
 
   stage.add(underlayLayer);
+  stage.add(wallLayer);
   stage.add(guideLayer);
   stage.add(wireLayer);
   stage.add(electricalLayer);
@@ -141,6 +173,7 @@ function bindEvents() {
   const uploadInput = document.getElementById('planUpload');
   uploadInput.addEventListener('change', (e) => {
     if (e.target.files && e.target.files[0]) {
+      exitDrawPlanMode();
       processImageFile(e.target.files[0]);
       e.target.value = '';
     }
@@ -276,6 +309,7 @@ function renderItemsView(catKey) {
 
 function openLibraryModal() {
   dismissWelcome();
+  exitDrawPlanMode();
   closeClearPopover();
   clearWireControlHandle();
   clearGuideLines();
@@ -288,6 +322,7 @@ function closeLibraryModal() {
 }
 
 function selectComponentFromLibrary(type) {
+  exitDrawPlanMode();
   resetWiringSelection();
   clearWireControlHandle();
   clearGuideLines();
@@ -307,6 +342,7 @@ function selectComponentFromLibrary(type) {
 
 function openWireModal() {
   dismissWelcome();
+  exitDrawPlanMode();
   closeClearPopover();
   resetWiringSelection();
   clearWireControlHandle();
@@ -319,6 +355,7 @@ function closeWireModal() {
 }
 
 function selectWireWithStyle(type, style) {
+  exitDrawPlanMode();
   currentWireType = type;
   currentWireRoutingStyle = style;
   currentComponent = 'wire';
@@ -335,6 +372,7 @@ function selectWireWithStyle(type, style) {
 
 function selectQuickTool(tool) {
   dismissWelcome();
+  exitDrawPlanMode();
   resetWiringSelection();
   clearWireControlHandle();
   clearGuideLines();
@@ -359,6 +397,7 @@ function selectQuickTool(tool) {
 }
 
 function selectPointerTool(isUserAction = true) {
+  exitDrawPlanMode();
   currentComponent = null;
   resetWiringSelection();
   clearWireControlHandle();
@@ -404,22 +443,27 @@ function clearOnlyWires() {
 function clearAllLayout() {
   closeClearPopover();
   const comps = electricalLayer.find('.component');
-  if (comps.length === 0 && wires.length === 0) return;
-  if (!confirm("Are you sure you want to clear ALL components and wiring? (Background plan will remain)")) return;
+  if (comps.length === 0 && wires.length === 0 && drawnWalls.length === 0) return;
+  if (!confirm("Are you sure you want to clear ALL components, wiring, and drawn walls?")) return;
 
   const compSnapshot = comps.map(c => ({ id: c.id(), type: c.getAttr('compType'), x: c.x(), y: c.y() }));
   const wireSnapshot = [...wires];
+  const wallSnapshot = [...drawnWalls];
 
   wires.forEach(w => w.lineNode.destroy());
   wires = [];
   wireLayer.batchDraw();
   counts.wire = 0;
 
+  drawnWalls.forEach(w => w.lineNode.destroy());
+  drawnWalls = [];
+  wallLayer.batchDraw();
+
   comps.forEach(c => c.destroy());
   electricalLayer.batchDraw();
   Object.keys(CATALOG).forEach(k => counts[k] = 0);
 
-  undoStack.push({ action: 'clear_all', components: compSnapshot, wires: wireSnapshot });
+  undoStack.push({ action: 'clear_all', components: compSnapshot, wires: wireSnapshot, walls: wallSnapshot });
   redoStack.length = 0;
   updateStatus();
 }
@@ -439,9 +483,13 @@ function updateModeIndicatorUI() {
   const indicator = document.getElementById('modeIndicator');
   if (!indicator) return;
   
-  if (stage) stage.container().style.cursor = currentComponent ? 'crosshair' : 'default';
+  if (stage) stage.container().style.cursor = (currentComponent || isDrawingPlanMode) ? 'crosshair' : 'default';
 
-  if (currentComponent === 'wire') {
+  if (isDrawingPlanMode) {
+    indicator.style.background = 'rgba(76, 29, 149, 0.95)';
+    indicator.style.borderColor = '#8b5cf6';
+    indicator.innerHTML = `✏️ Draw Plan Mode <span class="mode-subtext">— Tap points to sketch walls</span>`;
+  } else if (currentComponent === 'wire') {
     const wt = WIRE_TYPES[currentWireType];
     indicator.style.background = 'rgba(49, 46, 129, 0.95)';
     indicator.style.borderColor = wt.stroke;
@@ -449,7 +497,7 @@ function updateModeIndicatorUI() {
   } else if (currentComponent === 'delete') {
     indicator.style.background = 'rgba(127, 29, 29, 0.95)';
     indicator.style.borderColor = '#ef4444';
-    indicator.innerHTML = `🗑️ Delete Tool Active <span class="mode-subtext">— Tap item to remove | Tap trash again for Clear All</span>`;
+    indicator.innerHTML = `🗑️ Delete Tool Active <span class="mode-subtext">— Tap item to remove</span>`;
   } else if (currentComponent && CATALOG[currentComponent]) {
     indicator.style.background = 'rgba(5, 150, 105, 0.95)';
     indicator.style.borderColor = '#10b981';
@@ -639,7 +687,7 @@ function changePlanOpacity(val) {
 
 function deleteUploadedPlan(fullClear = true) {
   if (fullClear) {
-    if (!confirm("Are you sure you want to delete the current plan? This action cannot be undone.")) return;
+    if (!confirm("Are you sure you want to delete the current plan?")) return;
   }
   if (planImageNode) { planImageNode.destroy(); planImageNode = null; }
   const canvasEl = underlayLayer.getCanvas()._canvas;
@@ -867,6 +915,53 @@ function computePointsForWire(fromX, fromY, toX, toY, routingStyle, customMidX =
   }
 }
 
+function createDrawnWall(x1, y1, x2, y2, wallId = null, recordHistory = true) {
+  const id = wallId || ('wall_' + (++wallIdCounter));
+  const line = new Konva.Line({
+    id: id,
+    points: [x1, y1, x2, y2],
+    stroke: '#1e293b',
+    strokeWidth: 4,
+    lineCap: 'round',
+    lineJoin: 'round',
+    hitStrokeWidth: 16
+  });
+
+  line.on('click tap', (e) => {
+    e.cancelBubble = true;
+    if (currentComponent === 'delete') {
+      deleteDrawnWall(id);
+    }
+  });
+
+  wallLayer.add(line);
+  wallLayer.batchDraw();
+
+  const wallRecord = { id, x1, y1, x2, y2, lineNode: line };
+  drawnWalls.push(wallRecord);
+
+  if (recordHistory) {
+    undoStack.push({ action: 'add_wall', data: wallRecord });
+    redoStack.length = 0;
+    updateStatus();
+  }
+}
+
+function deleteDrawnWall(wallId, recordHistory = true) {
+  const idx = drawnWalls.findIndex(w => w.id === wallId);
+  if (idx === -1) return;
+  const w = drawnWalls[idx];
+  w.lineNode.destroy();
+  drawnWalls.splice(idx, 1);
+  wallLayer.batchDraw();
+
+  if (recordHistory) {
+    undoStack.push({ action: 'delete_wall', data: { id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 } });
+    redoStack.length = 0;
+    updateStatus();
+  }
+}
+
 function createWire(fromId, toId, wireId = null, recordHistory = true, type = null, routingStyle = null, customMidX = null, customMidY = null) {
   const from = electricalLayer.findOne('#' + fromId);
   const to = electricalLayer.findOne('#' + toId);
@@ -1036,9 +1131,6 @@ function handleStageTap(e) {
   dismissWelcome();
   document.getElementById('burgerMenu').style.display = 'none';
 
-  // Multi-touch guard to prevent zoom/pan actions from triggering scale points
-  if (multiTouchDetected) return;
-
   if (isCalibratingScale) {
     const transform = stage.getAbsoluteTransform().copy().invert();
     const pointer = stage.getPointerPosition();
@@ -1074,6 +1166,29 @@ function handleStageTap(e) {
     }
     return;
   }
+
+  if (multiTouchDetected) return;
+
+  const transform = stage.getAbsoluteTransform().copy().invert();
+  const pointer = stage.getPointerPosition();
+  const pos = transform.point(pointer);
+
+  if (isDrawingPlanMode) {
+    if (!drawPlanStartPoint) {
+      drawPlanStartPoint = pos;
+      const dot = new Konva.Circle({ x: pos.x, y: pos.y, radius: 5, fill: '#8b5cf6', name: 'wall-anchor' });
+      guideLayer.add(dot);
+      guideLayer.batchDraw();
+    } else {
+      createDrawnWall(drawPlanStartPoint.x, drawPlanStartPoint.y, pos.x, pos.y);
+      drawPlanStartPoint = pos; // Continuous chain drawing
+      guideLayer.destroyChildren();
+      const dot = new Konva.Circle({ x: pos.x, y: pos.y, radius: 5, fill: '#8b5cf6', name: 'wall-anchor' });
+      guideLayer.add(dot);
+      guideLayer.batchDraw();
+    }
+    return;
+  }
   
   if (e.target === stage || e.target.hasName('planImage')) {
     clearWireControlHandle();
@@ -1082,10 +1197,6 @@ function handleStageTap(e) {
 
   if (!currentComponent || currentComponent === 'delete' || currentComponent === 'wire') return;
   if (e.target.findAncestor('.component', true)) return;
-
-  const transform = stage.getAbsoluteTransform().copy().invert();
-  const pointer = stage.getPointerPosition();
-  const pos = transform.point(pointer);
 
   const symbol = createSymbol(currentComponent, pos.x, pos.y);
   electricalLayer.add(symbol);
@@ -1104,6 +1215,7 @@ function updateStatus() {
 
 function undo() {
   if (undoStack.length === 0) return;
+  exitDrawPlanMode();
   resetWiringSelection();
   clearWireControlHandle();
   clearGuideLines();
@@ -1130,6 +1242,10 @@ function undo() {
       w.midY = entry.data.oldMidY;
       updateWireGeometry(w);
     }
+  } else if (entry.action === 'add_wall') {
+    deleteDrawnWall(entry.data.id, false);
+  } else if (entry.action === 'delete_wall') {
+    createDrawnWall(entry.data.x1, entry.data.y1, entry.data.x2, entry.data.y2, entry.data.id, false);
   } else if (entry.action === 'clear_wires') {
     entry.data.forEach(w => createWire(w.fromId, w.toId, w.id, false, w.type, w.routingStyle, w.midX, w.midY));
   } else if (entry.action === 'clear_all') {
@@ -1140,6 +1256,9 @@ function undo() {
     });
     electricalLayer.batchDraw();
     entry.wires.forEach(w => createWire(w.fromId, w.toId, w.id, false, w.type, w.routingStyle, w.midX, w.midY));
+    if (entry.walls) {
+      entry.walls.forEach(w => createDrawnWall(w.x1, w.y1, w.x2, w.y2, w.id, false));
+    }
   }
 
   redoStack.push(entry);
@@ -1148,6 +1267,7 @@ function undo() {
 
 function redo() {
   if (redoStack.length === 0) return;
+  exitDrawPlanMode();
   resetWiringSelection();
   clearWireControlHandle();
   clearGuideLines();
@@ -1173,6 +1293,10 @@ function redo() {
       w.midY = entry.data.newMidY;
       updateWireGeometry(w);
     }
+  } else if (entry.action === 'add_wall') {
+    createDrawnWall(entry.data.x1, entry.data.y1, entry.data.x2, entry.data.y2, entry.data.id, false);
+  } else if (entry.action === 'delete_wall') {
+    deleteDrawnWall(entry.data.id, false);
   } else if (entry.action === 'clear_wires') {
     wires.forEach(w => w.lineNode.destroy());
     wires = [];
@@ -1183,6 +1307,11 @@ function redo() {
     wires = [];
     wireLayer.batchDraw();
     counts.wire = 0;
+
+    drawnWalls.forEach(w => w.lineNode.destroy());
+    drawnWalls = [];
+    wallLayer.batchDraw();
+
     electricalLayer.find('.component').forEach(c => c.destroy());
     electricalLayer.batchDraw();
     Object.keys(CATALOG).forEach(k => counts[k] = 0);

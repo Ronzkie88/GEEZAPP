@@ -44,7 +44,7 @@ body {
   gap: 10px;
   z-index: 50;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
-  width: 160px;
+  width: 170px;
 }
 
 #workspace {
