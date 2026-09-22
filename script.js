@@ -1506,12 +1506,8 @@ function findClosestWallForOpening(worldX, worldY, ignoreOpeningIndex = -1) {
 
 function getStudioCanvasPoint(e) {
   const rect = studioCanvas.getBoundingClientRect();
-  const isRealTouchFinger = (e.pointerType === 'touch');
-  const isDrafting = (studioTool === 'wall' || studioTool === 'room');
-
-  const offsetY = (isRealTouchFinger && isDrafting) ? TOUCH_Y_OFFSET : 0;
   const rawX = e.clientX - rect.left;
-  const rawY = e.clientY - rect.top - offsetY;
+  const rawY = e.clientY - rect.top;
 
   let x = (rawX - studioPanX) / studioScale;
   let y = (rawY - studioPanY) / studioScale;
@@ -1528,8 +1524,8 @@ function getStudioCanvasPoint(e) {
         snapped: true,
         snappedWall: openingCandidate.wall,
         openingCandidate,
-        rawTouchX: e.clientX - rect.left,
-        rawTouchY: e.clientY - rect.top
+        rawTouchX: rawX,
+        rawTouchY: rawY
       };
     }
   }
@@ -1569,7 +1565,7 @@ function getStudioCanvasPoint(e) {
     y = Math.round(y / STUDIO_GRID_SIZE) * STUDIO_GRID_SIZE;
   }
 
-  return { x, y, snapped, snappedWall, rawTouchX: e.clientX - rect.left, rawTouchY: e.clientY - rect.top };
+  return { x, y, snapped, snappedWall, rawTouchX: rawX, rawTouchY: rawY };
 }
 
 function getPointSegmentProjection(px, py, x1, y1, x2, y2) {
