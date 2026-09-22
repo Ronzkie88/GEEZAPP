@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Electrical Layout Canvas PoC</title>
   <script src="https://unpkg.com/konva@9/konva.min.js"></script>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=13" />
 </head>
 <body>
 
@@ -29,11 +29,10 @@
     </div>
   </div>
 
-  <!-- Burger Menu with Draw Plan Option -->
   <div id="burgerMenu">
     <button class="file-label" onclick="document.getElementById('planUpload').click(); toggleBurgerMenu();" style="width: 100%; height: 38px; padding: 6px 10px;">📷 Upload Plan</button>
     <input type="file" id="planUpload" accept="image/*" />
-    <button class="btn-util" onclick="startDrawPlanMode(); toggleBurgerMenu();" style="width: 100%; height: 38px; background: #1e293b; border: 1px solid #334155;">✏️ Draw Plan</button>
+    <button class="btn-util" onclick="openStudioModal(); toggleBurgerMenu();" style="width: 100%; height: 38px; background: #1e293b; border: 1px solid #334155; font-size: 12px; gap: 6px;">✏️ Draw Plan</button>
     <button class="btn-quote" onclick="openQuoteModal(); toggleBurgerMenu();" style="width: 100%; height: 38px;">📊 Quote</button>
   </div>
 
@@ -77,7 +76,7 @@
   <div id="workspace">
     <div id="welcomePill">
       👋 Welcome to ElecPOC
-      <div class="welcome-sub">Tap <strong>☰</strong> to upload or draw a floor plan, or <strong>🧰</strong> to drop components.</div>
+      <div class="welcome-sub">Tap <strong>☰</strong> to upload a floor plan, or <strong>🧰</strong> to drop components.</div>
     </div>
     <div id="scaleBanner">📏 Tap first point of known scale reference</div>
     <div id="container"></div>
@@ -121,6 +120,56 @@
     </div>
   </div>
 
+  <!-- FULLSCREEN ARCHITECTURAL SKETCH STUDIO -->
+  <div id="studioModal">
+    <div id="studioTopBar">
+      <div class="top-group">
+        <button class="btn-util" onclick="confirmStudioCancel()" style="height: 36px; padding: 0 10px; font-size: 12px;">✕ Cancel</button>
+        <button class="btn-util" onclick="studioUndo()" id="btnStudioUndo" style="height: 36px; padding: 0 12px;" disabled>↶</button>
+        <button class="btn-util" onclick="studioRedo()" id="btnStudioRedo" style="height: 36px; padding: 0 12px;" disabled>↷</button>
+        <button class="btn-util" onclick="recenterStudioPlan()" style="height: 36px; width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" title="Reset zoom and center plan">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" stroke-width="2" opacity="0.6"/>
+            <path d="M15 3h6v6"/>
+            <path d="M10 14L21 3"/>
+            <path d="M21 15v6h-6"/>
+          </svg>
+        </button>
+        <button class="btn-del" onclick="studioClear()" style="height: 36px; padding: 0 10px; font-size: 12px;">🗑️</button>
+      </div>
+      <div style="flex: 1;"></div>
+      <div class="top-group">
+        <button class="btn-quote" onclick="finishAndApplyPlan()" style="height: 36px; padding: 0 14px; font-size: 12px;">✓ Use Plan</button>
+      </div>
+    </div>
+
+    <div id="studioCanvasWrapper">
+      <div id="studioBanner">🧱 Draw walls or rooms</div>
+      
+      <div id="studioEditHud">
+        <span id="studioEditTitle" style="font-weight: 700; font-size: 11px; color: #38bdf8; margin-right: 2px;">Selected</span>
+        <div id="studioEditActions" style="display: flex; gap: 6px;"></div>
+      </div>
+
+      <canvas id="studioCanvas"></canvas>
+    </div>
+
+    <div id="studioBottomBar">
+      <div class="studio-tools-scroll">
+        <button class="btn-studio-tool" id="btnStudioSelect" onclick="setStudioTool('select')">✏️ Edit</button>
+        <button class="btn-studio-tool selected" id="btnStudioWall" onclick="setStudioTool('wall')">🧱 Wall</button>
+        <button class="btn-studio-tool" id="btnStudioRoom" onclick="setStudioTool('room')">🔲 Room</button>
+        <button class="btn-studio-tool" id="btnStudioDoor" onclick="setStudioTool('door')">🚪 Door</button>
+        <button class="btn-studio-tool" id="btnStudioSlider" onclick="setStudioTool('slider')">🪟 Slider</button>
+        <button class="btn-studio-tool" id="btnStudioWindow" onclick="setStudioTool('window')">🪟 Window</button>
+        <button class="btn-studio-tool" id="btnStudioLabel" onclick="setStudioTool('label')">🏷️ Label</button>
+        <button class="btn-studio-tool" id="btnStudioEraser" onclick="setStudioTool('eraser')">🧹 Eraser</button>
+        <div style="height: 24px; width: 1px; background: #334155; margin: 0 2px;"></div>
+        <button class="btn-studio-tool active-toggle" id="btnStudioSnap" onclick="toggleStudioGridSnap()">🧲 Snap</button>
+      </div>
+    </div>
+  </div>
+
   <div id="libraryModal" onclick="if(event.target === this) closeLibraryModal()">
     <div class="library-content">
       <div class="modal-header-sticky">
@@ -130,7 +179,6 @@
         </div>
         <button class="btn-util" onclick="closeLibraryModal()" style="height: 32px; padding: 4px 10px;">✕</button>
       </div>
-
       <div class="modal-scroll-body" id="libModalBody"></div>
     </div>
   </div>
@@ -232,6 +280,6 @@
     </div>
   </div>
 
-  <script src="script.js"></script>
+  <script src="script.js?v=13"></script>
 </body>
 </html>

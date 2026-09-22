@@ -1,29 +1,21 @@
-let stage, underlayLayer, wallLayer, wireLayer, electricalLayer, controlLayer, guideLayer;
+let stage, underlayLayer, wireLayer, electricalLayer, controlLayer, guideLayer;
 let planImageNode = null;
 let filterReqId = null;
 let opacityReqId = null;
 
-let currentComponent = null; 
+let currentComponent = null;
 let currentWireType = 'power';
 let currentWireRoutingStyle = 'curved';
 let selectedWireForEdit = null;
 let multiTouchDetected = false;
 let isWelcomeActive = true;
 
-// Draw Plan state
-let isDrawingPlanMode = false;
-let drawPlanStartPoint = null;
-let drawnWalls = [];
-let wallIdCounter = 0;
-
-// Scale calibration state
-let scalePixelsPerMeter = 45; 
+let scalePixelsPerMeter = 45;
 let isCalibratingScale = false;
 let scalePoint1 = null;
 
 const SNAP_THRESHOLD = 8;
 const MAX_SNAP_DISTANCE = 160;
-
 const WIRE_HIT_WIDTH = 12;
 const COMPONENT_HIT_RADIUS = 16;
 
@@ -94,7 +86,8 @@ window.addEventListener('DOMContentLoaded', () => {
   initStage();
   bindEvents();
   setupPinchAndPan();
-  selectPointerTool(false); 
+  selectPointerTool(false);
+  initStudio();
 });
 
 function dismissWelcome() {
@@ -103,36 +96,12 @@ function dismissWelcome() {
   const pill = document.getElementById('welcomePill');
   if (pill) pill.style.display = 'none';
   const indicator = document.getElementById('modeIndicator');
-  if (indicator) indicator.style.display = 'block'; 
+  if (indicator) indicator.style.display = 'block';
   updateModeIndicatorUI();
-}
-
-function startDrawPlanMode() {
-  dismissWelcome();
-  isDrawingPlanMode = true;
-  drawPlanStartPoint = null;
-  currentComponent = null;
-  resetWiringSelection();
-  clearWireControlHandle();
-  
-  const banner = document.getElementById('scaleBanner');
-  if (banner) {
-    banner.style.display = 'block';
-    banner.innerText = "✏️ Draw Plan: Tap points to sketch walls (Switch tool to finish)";
-  }
-  updateModeIndicatorUI();
-}
-
-function exitDrawPlanMode() {
-  isDrawingPlanMode = false;
-  drawPlanStartPoint = null;
-  const banner = document.getElementById('scaleBanner');
-  if (banner) banner.style.display = 'none';
 }
 
 function startScaleCalibration() {
   toggleTuningDrawer();
-  exitDrawPlanMode();
   isCalibratingScale = true;
   scalePoint1 = null;
   const banner = document.getElementById('scaleBanner');
@@ -152,14 +121,12 @@ function initStage() {
   });
 
   underlayLayer = new Konva.Layer();
-  wallLayer = new Konva.Layer();
   guideLayer = new Konva.Layer();
   wireLayer = new Konva.Layer();
   electricalLayer = new Konva.Layer();
   controlLayer = new Konva.Layer();
 
   stage.add(underlayLayer);
-  stage.add(wallLayer);
   stage.add(guideLayer);
   stage.add(wireLayer);
   stage.add(electricalLayer);
@@ -169,11 +136,13 @@ function initStage() {
 }
 
 function bindEvents() {
-  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    resizeStudio();
+  });
   const uploadInput = document.getElementById('planUpload');
   uploadInput.addEventListener('change', (e) => {
     if (e.target.files && e.target.files[0]) {
-      exitDrawPlanMode();
       processImageFile(e.target.files[0]);
       e.target.value = '';
     }
@@ -309,7 +278,6 @@ function renderItemsView(catKey) {
 
 function openLibraryModal() {
   dismissWelcome();
-  exitDrawPlanMode();
   closeClearPopover();
   clearWireControlHandle();
   clearGuideLines();
@@ -322,12 +290,11 @@ function closeLibraryModal() {
 }
 
 function selectComponentFromLibrary(type) {
-  exitDrawPlanMode();
   resetWiringSelection();
   clearWireControlHandle();
   clearGuideLines();
   closeClearPopover();
-  
+
   currentComponent = type;
   const item = CATALOG[type];
   document.getElementById('activeToolBtn').innerText = item.icon;
@@ -342,7 +309,6 @@ function selectComponentFromLibrary(type) {
 
 function openWireModal() {
   dismissWelcome();
-  exitDrawPlanMode();
   closeClearPopover();
   resetWiringSelection();
   clearWireControlHandle();
@@ -355,11 +321,10 @@ function closeWireModal() {
 }
 
 function selectWireWithStyle(type, style) {
-  exitDrawPlanMode();
   currentWireType = type;
   currentWireRoutingStyle = style;
   currentComponent = 'wire';
-  
+
   document.getElementById('toolWire').classList.add('selected');
   document.getElementById('toolDel').classList.remove('selected');
   document.getElementById('toolPointer').classList.remove('selected');
@@ -372,11 +337,10 @@ function selectWireWithStyle(type, style) {
 
 function selectQuickTool(tool) {
   dismissWelcome();
-  exitDrawPlanMode();
   resetWiringSelection();
   clearWireControlHandle();
   clearGuideLines();
-  
+
   if (tool === 'delete') {
     if (currentComponent === 'delete') {
       const pop = document.getElementById('clearPopover');
@@ -397,7 +361,6 @@ function selectQuickTool(tool) {
 }
 
 function selectPointerTool(isUserAction = true) {
-  exitDrawPlanMode();
   currentComponent = null;
   resetWiringSelection();
   clearWireControlHandle();
@@ -413,7 +376,7 @@ function selectPointerTool(isUserAction = true) {
   if (isUserAction) {
     dismissWelcome();
   }
-  
+
   if (!isWelcomeActive) {
     updateModeIndicatorUI();
   }
@@ -443,27 +406,22 @@ function clearOnlyWires() {
 function clearAllLayout() {
   closeClearPopover();
   const comps = electricalLayer.find('.component');
-  if (comps.length === 0 && wires.length === 0 && drawnWalls.length === 0) return;
-  if (!confirm("Are you sure you want to clear ALL components, wiring, and drawn walls?")) return;
+  if (comps.length === 0 && wires.length === 0) return;
+  if (!confirm("Are you sure you want to clear ALL components and wiring? (Background plan will remain)")) return;
 
   const compSnapshot = comps.map(c => ({ id: c.id(), type: c.getAttr('compType'), x: c.x(), y: c.y() }));
   const wireSnapshot = [...wires];
-  const wallSnapshot = [...drawnWalls];
 
   wires.forEach(w => w.lineNode.destroy());
   wires = [];
   wireLayer.batchDraw();
   counts.wire = 0;
 
-  drawnWalls.forEach(w => w.lineNode.destroy());
-  drawnWalls = [];
-  wallLayer.batchDraw();
-
   comps.forEach(c => c.destroy());
   electricalLayer.batchDraw();
   Object.keys(CATALOG).forEach(k => counts[k] = 0);
 
-  undoStack.push({ action: 'clear_all', components: compSnapshot, wires: wireSnapshot, walls: wallSnapshot });
+  undoStack.push({ action: 'clear_all', components: compSnapshot, wires: wireSnapshot });
   redoStack.length = 0;
   updateStatus();
 }
@@ -473,7 +431,7 @@ function resetWiringSelection() {
     try {
       const ring = wiringStartNode.findOne('.highlight-ring');
       if (ring) ring.destroy();
-    } catch (e) {}
+    } catch (e) { }
     wiringStartNode = null;
     electricalLayer.batchDraw();
   }
@@ -482,14 +440,10 @@ function resetWiringSelection() {
 function updateModeIndicatorUI() {
   const indicator = document.getElementById('modeIndicator');
   if (!indicator) return;
-  
-  if (stage) stage.container().style.cursor = (currentComponent || isDrawingPlanMode) ? 'crosshair' : 'default';
 
-  if (isDrawingPlanMode) {
-    indicator.style.background = 'rgba(76, 29, 149, 0.95)';
-    indicator.style.borderColor = '#8b5cf6';
-    indicator.innerHTML = `✏️ Draw Plan Mode <span class="mode-subtext">— Tap points to sketch walls</span>`;
-  } else if (currentComponent === 'wire') {
+  if (stage) stage.container().style.cursor = currentComponent ? 'crosshair' : 'default';
+
+  if (currentComponent === 'wire') {
     const wt = WIRE_TYPES[currentWireType];
     indicator.style.background = 'rgba(49, 46, 129, 0.95)';
     indicator.style.borderColor = wt.stroke;
@@ -497,7 +451,7 @@ function updateModeIndicatorUI() {
   } else if (currentComponent === 'delete') {
     indicator.style.background = 'rgba(127, 29, 29, 0.95)';
     indicator.style.borderColor = '#ef4444';
-    indicator.innerHTML = `🗑️ Delete Tool Active <span class="mode-subtext">— Tap item to remove</span>`;
+    indicator.innerHTML = `🗑️ Delete Tool Active <span class="mode-subtext">— Tap item to remove | Tap trash again for Clear All</span>`;
   } else if (currentComponent && CATALOG[currentComponent]) {
     indicator.style.background = 'rgba(5, 150, 105, 0.95)';
     indicator.style.borderColor = '#10b981';
@@ -522,6 +476,47 @@ function recenterPlan() {
   stage.scale({ x: 1, y: 1 });
   stage.position({ x: 0, y: 0 });
   stage.batchDraw();
+}
+
+function recenterStudioPlan() {
+  if (!studioCanvas) return;
+
+  if (studioLines.length === 0) {
+    studioScale = 1.0;
+    studioPanX = 0;
+    studioPanY = 0;
+    renderStudio();
+    return;
+  }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  studioLines.forEach(l => {
+    minX = Math.min(minX, l.x1, l.x2);
+    maxX = Math.max(maxX, l.x1, l.x2);
+    minY = Math.min(minY, l.y1, l.y2);
+    maxY = Math.max(maxY, l.y1, l.y2);
+  });
+
+  const dpr = window.devicePixelRatio || 1;
+  const canvasW = studioCanvas.width / dpr;
+  const canvasH = studioCanvas.height / dpr;
+
+  const contentW = (maxX - minX) || 100;
+  const contentH = (maxY - minY) || 100;
+
+  const padding = 80;
+  const scaleX = (canvasW - padding) / contentW;
+  const scaleY = (canvasH - padding) / contentH;
+
+  studioScale = Math.max(0.4, Math.min(Math.min(scaleX, scaleY), 3.0));
+
+  const contentCenterX = (minX + maxX) / 2;
+  const contentCenterY = (minY + maxY) / 2;
+
+  studioPanX = (canvasW / 2) - (contentCenterX * studioScale);
+  studioPanY = (canvasH / 2) - (contentCenterY * studioScale);
+
+  renderStudio();
 }
 
 function setupPinchAndPan() {
@@ -609,8 +604,8 @@ function updatePlanVisuals() {
       if (!enabled) {
         canvasEl.style.filter = 'none';
       } else {
-        const contrastVal = 100 + (rawContrast - 50) * 5;     
-        const brightnessVal = 100 + (rawBrightness - 50) * 1.5; 
+        const contrastVal = 100 + (rawContrast - 50) * 5;
+        const brightnessVal = 100 + (rawBrightness - 50) * 1.5;
         canvasEl.style.filter = `grayscale(100%) contrast(${Math.max(0, contrastVal)}%) brightness(${Math.max(10, brightnessVal)}%)`;
       }
     }
@@ -640,38 +635,44 @@ function processImageFile(file) {
   dismissWelcome();
   const reader = new FileReader();
   reader.onload = (e) => {
-    const img = new Image();
-    img.onload = () => {
-      deleteUploadedPlan(false);
-      const cW = stage.width();
-      const cH = stage.height();
-      const scale = Math.min((cW * 0.92) / img.width, (cH * 0.92) / img.height);
-      const fitW = Math.round(img.width * scale);
-      const fitH = Math.round(img.height * scale);
-
-      planImageNode = new Konva.Image({
-        x: Math.round((cW - fitW) / 2),
-        y: Math.round((cH - fitH) / 2),
-        image: img,
-        width: fitW,
-        height: fitH,
-        opacity: 0.5, 
-        draggable: false,
-        name: 'planImage'
-      });
-
-      underlayLayer.add(planImageNode);
-      underlayLayer.batchDraw();
-      resetPlanVisuals();
-
-      document.getElementById('btnToggleTune').style.display = 'inline-flex';
-      document.getElementById('btnRecenter').style.display = 'inline-flex';
-      updatePlanVisuals();
-      requestAnimationFrame(resizeCanvas);
-    };
-    img.src = e.target.result;
+    loadPlanImageFromUrl(e.target.result);
   };
   reader.readAsDataURL(file);
+}
+
+function loadPlanImageFromUrl(dataUrl) {
+  dismissWelcome();
+  const img = new Image();
+  img.onload = () => {
+    deleteUploadedPlan(false);
+    const cW = stage.width();
+    const cH = stage.height();
+    const scale = Math.min((cW * 0.92) / img.width, (cH * 0.92) / img.height);
+    const fitW = Math.round(img.width * scale);
+    const fitH = Math.round(img.height * scale);
+
+    planImageNode = new Konva.Image({
+      x: Math.round((cW - fitW) / 2),
+      y: Math.round((cH - fitH) / 2),
+      image: img,
+      width: fitW,
+      height: fitH,
+      opacity: 0.5,
+      draggable: false,
+      name: 'planImage'
+    });
+
+    underlayLayer.add(planImageNode);
+    underlayLayer.batchDraw();
+    resetPlanVisuals();
+
+    document.getElementById('btnToggleTune').style.display = 'inline-flex';
+    document.getElementById('btnRecenter').style.display = 'inline-flex';
+    document.getElementById('lblScaleDisplay').innerText = `${scalePixelsPerMeter.toFixed(1)} px/m`;
+    updatePlanVisuals();
+    requestAnimationFrame(resizeCanvas);
+  };
+  img.src = dataUrl;
 }
 
 function changePlanOpacity(val) {
@@ -687,13 +688,13 @@ function changePlanOpacity(val) {
 
 function deleteUploadedPlan(fullClear = true) {
   if (fullClear) {
-    if (!confirm("Are you sure you want to delete the current plan?")) return;
+    if (!confirm("Are you sure you want to delete the current plan? This action cannot be undone.")) return;
   }
   if (planImageNode) { planImageNode.destroy(); planImageNode = null; }
   const canvasEl = underlayLayer.getCanvas()._canvas;
   if (canvasEl) canvasEl.style.filter = 'none';
   underlayLayer.batchDraw();
-  
+
   if (fullClear) {
     document.getElementById('btnToggleTune').style.display = 'none';
     document.getElementById('btnRecenter').style.display = 'none';
@@ -710,9 +711,9 @@ function createSymbol(type, x, y, id) {
   const compId = id || ('comp_' + (++compIdCounter));
   const s = getDeviceScale();
 
-  const group = new Konva.Group({ 
-    x: x, 
-    y: y, 
+  const group = new Konva.Group({
+    x: x,
+    y: y,
     scale: { x: s, y: s },
     draggable: true,
     name: 'component',
@@ -859,6 +860,14 @@ function createSymbol(type, x, y, id) {
     group.add(new Konva.Text({ text: 'DB', x: 4, y: -4, fontSize: 8, fill: '#38bdf8', fontStyle: 'bold' }));
   }
 
+  let compDragStartX = 0;
+  let compDragStartY = 0;
+
+  group.on('dragstart', () => {
+    compDragStartX = group.x();
+    compDragStartY = group.y();
+  });
+
   group.on('dragmove', () => {
     const compType = group.getAttr('compType');
     const snap = checkAlignmentSnap(group.x(), group.y(), group.id(), compType);
@@ -869,6 +878,18 @@ function createSymbol(type, x, y, id) {
 
   group.on('dragend', () => {
     clearGuideLines();
+    if (Math.hypot(group.x() - compDragStartX, group.y() - compDragStartY) > 2) {
+      undoStack.push({
+        action: 'move_component',
+        id: group.id(),
+        oldX: compDragStartX,
+        oldY: compDragStartY,
+        newX: group.x(),
+        newY: group.y()
+      });
+      redoStack.length = 0;
+      updateStatus();
+    }
   });
 
   group.on('click tap', (e) => {
@@ -912,53 +933,6 @@ function computePointsForWire(fromX, fromY, toX, toY, routingStyle, customMidX =
     const dist = Math.hypot(dx, dy) || 1;
     const offset = Math.min(dist * 0.18, 30);
     return [fromX, fromY, midX + (-dy / dist) * offset, midY + (dx / dist) * offset, toX, toY];
-  }
-}
-
-function createDrawnWall(x1, y1, x2, y2, wallId = null, recordHistory = true) {
-  const id = wallId || ('wall_' + (++wallIdCounter));
-  const line = new Konva.Line({
-    id: id,
-    points: [x1, y1, x2, y2],
-    stroke: '#1e293b',
-    strokeWidth: 4,
-    lineCap: 'round',
-    lineJoin: 'round',
-    hitStrokeWidth: 16
-  });
-
-  line.on('click tap', (e) => {
-    e.cancelBubble = true;
-    if (currentComponent === 'delete') {
-      deleteDrawnWall(id);
-    }
-  });
-
-  wallLayer.add(line);
-  wallLayer.batchDraw();
-
-  const wallRecord = { id, x1, y1, x2, y2, lineNode: line };
-  drawnWalls.push(wallRecord);
-
-  if (recordHistory) {
-    undoStack.push({ action: 'add_wall', data: wallRecord });
-    redoStack.length = 0;
-    updateStatus();
-  }
-}
-
-function deleteDrawnWall(wallId, recordHistory = true) {
-  const idx = drawnWalls.findIndex(w => w.id === wallId);
-  if (idx === -1) return;
-  const w = drawnWalls[idx];
-  w.lineNode.destroy();
-  drawnWalls.splice(idx, 1);
-  wallLayer.batchDraw();
-
-  if (recordHistory) {
-    undoStack.push({ action: 'delete_wall', data: { id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 } });
-    redoStack.length = 0;
-    updateStatus();
   }
 }
 
@@ -1117,10 +1091,10 @@ function deleteComponent(node, recordHistory = true) {
   updateStatus();
 
   if (recordHistory) {
-    undoStack.push({ 
-      action: 'delete_component', 
-      data, 
-      cascadeWires: attached.map(w => ({ id: w.id, fromId: w.fromId, toId: w.toId, type: w.type, routingStyle: w.routingStyle, midX: w.midX, midY: w.midY })) 
+    undoStack.push({
+      action: 'delete_component',
+      data,
+      cascadeWires: attached.map(w => ({ id: w.id, fromId: w.fromId, toId: w.toId, type: w.type, routingStyle: w.routingStyle, midX: w.midX, midY: w.midY }))
     });
     redoStack.length = 0;
     updateStatus();
@@ -1130,6 +1104,7 @@ function deleteComponent(node, recordHistory = true) {
 function handleStageTap(e) {
   dismissWelcome();
   document.getElementById('burgerMenu').style.display = 'none';
+  if (multiTouchDetected) return;
 
   if (isCalibratingScale) {
     const transform = stage.getAbsoluteTransform().copy().invert();
@@ -1140,7 +1115,7 @@ function handleStageTap(e) {
       scalePoint1 = pos;
       const banner = document.getElementById('scaleBanner');
       if (banner) banner.innerText = "📏 Tap second point of known scale reference";
-      
+
       const dot = new Konva.Circle({ x: pos.x, y: pos.y, radius: 5, fill: '#7c3aed', name: 'scale-anchor' });
       guideLayer.add(dot);
       guideLayer.batchDraw();
@@ -1153,12 +1128,17 @@ function handleStageTap(e) {
 
       const pixelDist = Math.hypot(pos.x - scalePoint1.x, pos.y - scalePoint1.y);
       const realMetersPrompt = prompt("Enter real-world length between these two points in meters (e.g. 2.5):", "2.5");
-      
+
       if (realMetersPrompt) {
         const meters = parseFloat(realMetersPrompt);
         if (meters > 0) {
           scalePixelsPerMeter = pixelDist / meters;
           document.getElementById('lblScaleDisplay').innerText = `${scalePixelsPerMeter.toFixed(1)} px/m`;
+
+          studioOpenings.forEach(op => {
+            op.length = (op.nominalMeters || 0.9) * scalePixelsPerMeter;
+          });
+
           alert(`Scale calibrated successfully! (${scalePixelsPerMeter.toFixed(1)} pixels/meter)`);
         }
       }
@@ -1167,29 +1147,6 @@ function handleStageTap(e) {
     return;
   }
 
-  if (multiTouchDetected) return;
-
-  const transform = stage.getAbsoluteTransform().copy().invert();
-  const pointer = stage.getPointerPosition();
-  const pos = transform.point(pointer);
-
-  if (isDrawingPlanMode) {
-    if (!drawPlanStartPoint) {
-      drawPlanStartPoint = pos;
-      const dot = new Konva.Circle({ x: pos.x, y: pos.y, radius: 5, fill: '#8b5cf6', name: 'wall-anchor' });
-      guideLayer.add(dot);
-      guideLayer.batchDraw();
-    } else {
-      createDrawnWall(drawPlanStartPoint.x, drawPlanStartPoint.y, pos.x, pos.y);
-      drawPlanStartPoint = pos; // Continuous chain drawing
-      guideLayer.destroyChildren();
-      const dot = new Konva.Circle({ x: pos.x, y: pos.y, radius: 5, fill: '#8b5cf6', name: 'wall-anchor' });
-      guideLayer.add(dot);
-      guideLayer.batchDraw();
-    }
-    return;
-  }
-  
   if (e.target === stage || e.target.hasName('planImage')) {
     clearWireControlHandle();
     closeClearPopover();
@@ -1197,6 +1154,10 @@ function handleStageTap(e) {
 
   if (!currentComponent || currentComponent === 'delete' || currentComponent === 'wire') return;
   if (e.target.findAncestor('.component', true)) return;
+
+  const transform = stage.getAbsoluteTransform().copy().invert();
+  const pointer = stage.getPointerPosition();
+  const pos = transform.point(pointer);
 
   const symbol = createSymbol(currentComponent, pos.x, pos.y);
   electricalLayer.add(symbol);
@@ -1215,14 +1176,20 @@ function updateStatus() {
 
 function undo() {
   if (undoStack.length === 0) return;
-  exitDrawPlanMode();
   resetWiringSelection();
   clearWireControlHandle();
   clearGuideLines();
   closeClearPopover();
   const entry = undoStack.pop();
 
-  if (entry.action === 'add_component') {
+  if (entry.action === 'move_component') {
+    const node = electricalLayer.findOne('#' + entry.id);
+    if (node) {
+      node.position({ x: entry.oldX, y: entry.oldY });
+      electricalLayer.batchDraw();
+      updateConnectedWires();
+    }
+  } else if (entry.action === 'add_component') {
     const node = electricalLayer.findOne('#' + entry.data.id);
     if (node) { node.destroy(); if (counts[entry.data.type] !== undefined) counts[entry.data.type]--; electricalLayer.batchDraw(); }
   } else if (entry.action === 'delete_component') {
@@ -1242,10 +1209,6 @@ function undo() {
       w.midY = entry.data.oldMidY;
       updateWireGeometry(w);
     }
-  } else if (entry.action === 'add_wall') {
-    deleteDrawnWall(entry.data.id, false);
-  } else if (entry.action === 'delete_wall') {
-    createDrawnWall(entry.data.x1, entry.data.y1, entry.data.x2, entry.data.y2, entry.data.id, false);
   } else if (entry.action === 'clear_wires') {
     entry.data.forEach(w => createWire(w.fromId, w.toId, w.id, false, w.type, w.routingStyle, w.midX, w.midY));
   } else if (entry.action === 'clear_all') {
@@ -1256,9 +1219,6 @@ function undo() {
     });
     electricalLayer.batchDraw();
     entry.wires.forEach(w => createWire(w.fromId, w.toId, w.id, false, w.type, w.routingStyle, w.midX, w.midY));
-    if (entry.walls) {
-      entry.walls.forEach(w => createDrawnWall(w.x1, w.y1, w.x2, w.y2, w.id, false));
-    }
   }
 
   redoStack.push(entry);
@@ -1267,14 +1227,20 @@ function undo() {
 
 function redo() {
   if (redoStack.length === 0) return;
-  exitDrawPlanMode();
   resetWiringSelection();
   clearWireControlHandle();
   clearGuideLines();
   closeClearPopover();
   const entry = redoStack.pop();
 
-  if (entry.action === 'add_component') {
+  if (entry.action === 'move_component') {
+    const node = electricalLayer.findOne('#' + entry.id);
+    if (node) {
+      node.position({ x: entry.newX, y: entry.newY });
+      electricalLayer.batchDraw();
+      updateConnectedWires();
+    }
+  } else if (entry.action === 'add_component') {
     const node = createSymbol(entry.data.type, entry.data.x, entry.data.y, entry.data.id);
     electricalLayer.add(node);
     if (counts[entry.data.type] !== undefined) counts[entry.data.type]++;
@@ -1293,10 +1259,6 @@ function redo() {
       w.midY = entry.data.newMidY;
       updateWireGeometry(w);
     }
-  } else if (entry.action === 'add_wall') {
-    createDrawnWall(entry.data.x1, entry.data.y1, entry.data.x2, entry.data.y2, entry.data.id, false);
-  } else if (entry.action === 'delete_wall') {
-    deleteDrawnWall(entry.data.id, false);
   } else if (entry.action === 'clear_wires') {
     wires.forEach(w => w.lineNode.destroy());
     wires = [];
@@ -1307,11 +1269,6 @@ function redo() {
     wires = [];
     wireLayer.batchDraw();
     counts.wire = 0;
-
-    drawnWalls.forEach(w => w.lineNode.destroy());
-    drawnWalls = [];
-    wallLayer.batchDraw();
-
     electricalLayer.find('.component').forEach(c => c.destroy());
     electricalLayer.batchDraw();
     Object.keys(CATALOG).forEach(k => counts[k] = 0);
@@ -1360,4 +1317,1298 @@ function openQuoteModal() {
 
 function closeQuoteModal() {
   document.getElementById('quoteModal').style.display = 'none';
+}
+
+/* ==========================================================================
+   SPARKY SKETCH STUDIO ENGINE
+   ========================================================================== */
+let studioCanvas, studioCtx;
+let studioTool = 'wall';
+let studioGridSnap = true;
+
+let studioLines = [];
+let studioOpenings = [];
+let studioLabels = [];
+let studioUndoStack = [];
+let studioRedoStack = [];
+let selectedStudioEntity = null;
+
+let studioScale = 1.0;
+let studioPanX = 0;
+let studioPanY = 0;
+let isStudioMultiTouch = false;
+let studioInitialPinchDist = 0;
+let studioInitialScale = 1.0;
+let studioInitialCenter = null;
+let studioInitialPan = null;
+
+let isStudioDrawing = false;
+let studioStartPoint = null;
+let studioCurrentPoint = null;
+
+const STUDIO_GRID_SIZE = 20;
+const CORNER_SNAP_DIST = 26;
+const T_SNAP_DIST = 16;
+const TOUCH_Y_OFFSET = 45;
+
+function initStudio() {
+  studioCanvas = document.getElementById('studioCanvas');
+  if (!studioCanvas) return;
+  studioCtx = studioCanvas.getContext('2d');
+
+  studioCanvas.addEventListener('pointerdown', handleStudioPointerDown);
+  studioCanvas.addEventListener('pointermove', handleStudioPointerMove);
+  studioCanvas.addEventListener('pointerup', handleStudioPointerUp);
+  studioCanvas.addEventListener('pointercancel', handleStudioPointerUp);
+
+  studioCanvas.addEventListener('touchstart', handleStudioTouchStart, { passive: false });
+  studioCanvas.addEventListener('touchmove', handleStudioTouchMove, { passive: false });
+  studioCanvas.addEventListener('touchend', handleStudioTouchEnd, { passive: false });
+}
+
+function openStudioModal() {
+  dismissWelcome();
+  const modal = document.getElementById('studioModal');
+  modal.style.display = 'flex';
+  setStudioTool('wall');
+  resizeStudio();
+}
+
+function closeStudioModal() {
+  document.getElementById('studioModal').style.display = 'none';
+  hideEditHud();
+}
+
+function confirmStudioCancel() {
+  if (studioLines.length > 0 || studioOpenings.length > 0 || studioLabels.length > 0) {
+    if (!confirm("Are you sure you want to cancel? All unsaved drawing progress will be lost.")) {
+      return;
+    }
+  }
+  studioLines = [];
+  studioOpenings = [];
+  studioLabels = [];
+  studioUndoStack = [];
+  studioRedoStack = [];
+  selectedStudioEntity = null;
+  closeStudioModal();
+}
+
+function resizeStudio() {
+  if (!studioCanvas) return;
+  const wrapper = document.getElementById('studioCanvasWrapper');
+  if (!wrapper) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrapper.getBoundingClientRect();
+  studioCanvas.width = rect.width * dpr;
+  studioCanvas.height = rect.height * dpr;
+  renderStudio();
+}
+
+function setStudioTool(tool) {
+  studioTool = tool;
+  const tools = ['select', 'wall', 'room', 'door', 'slider', 'window', 'label', 'eraser'];
+  tools.forEach(t => {
+    const el = document.getElementById('btnStudio' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (el) el.classList.toggle('selected', tool === t);
+  });
+
+  if (tool !== 'select') {
+    selectedStudioEntity = null;
+    hideEditHud();
+  }
+
+  const banner = document.getElementById('studioBanner');
+  if (banner) {
+    if (tool === 'select') {
+      banner.style.display = 'block';
+      banner.innerText = '✏️ Tap any wall, door, slider, window or label to edit properties';
+    } else if (tool === 'door') {
+      banner.style.display = 'block';
+      banner.innerText = '🚪 Slide & tap along a wall to place a 900mm swing door';
+    } else if (tool === 'slider') {
+      banner.style.display = 'block';
+      banner.innerText = '🪟 Slide & tap along a wall to place a sliding door';
+    } else if (tool === 'window') {
+      banner.style.display = 'block';
+      banner.innerText = '🪟 Slide & tap along a wall to stamp a 1200mm window';
+    } else if (tool === 'label') {
+      banner.style.display = 'block';
+      banner.innerText = '🏷️ Tap a room center to add a zone name';
+    } else if (tool === 'wall') {
+      banner.style.display = 'block';
+      banner.innerText = '🧱 Draw walls (Toggle Cavity via Edit HUD)';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+  renderStudio();
+}
+
+function toggleStudioGridSnap() {
+  studioGridSnap = !studioGridSnap;
+  document.getElementById('btnStudioSnap').classList.toggle('active-toggle', studioGridSnap);
+}
+
+function checkOpeningCollision(candidate, ignoreIndex = -1) {
+  const cHalf = candidate.length / 2;
+  for (let i = 0; i < studioOpenings.length; i++) {
+    if (i === ignoreIndex) continue;
+    const op = studioOpenings[i];
+    if (op.wallRef !== candidate.wall) continue;
+
+    const distBetween = Math.hypot(op.x - candidate.x, op.y - candidate.y);
+    const minClearance = (op.length / 2) + cHalf + 8;
+    if (distBetween < minClearance) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findClosestWallForOpening(worldX, worldY, ignoreOpeningIndex = -1) {
+  let closestWall = null;
+  let bestDist = 38 / studioScale;
+  let bestProj = null;
+
+  for (const l of studioLines) {
+    const proj = getPointSegmentProjection(worldX, worldY, l.x1, l.y1, l.x2, l.y2);
+    if (proj.dist < bestDist) {
+      bestDist = proj.dist;
+      closestWall = l;
+      bestProj = proj;
+    }
+  }
+
+  if (closestWall && bestProj) {
+    const wLen = Math.hypot(closestWall.x2 - closestWall.x1, closestWall.y2 - closestWall.y1);
+    let nominalM = 0.9;
+    if (studioTool === 'slider') nominalM = 1.8;
+    else if (studioTool === 'window') nominalM = 1.2;
+
+    const opLen = nominalM * scalePixelsPerMeter;
+    const halfOp = Math.min(opLen / 2, wLen * 0.45);
+    const clampedDist = Math.max(halfOp, Math.min(bestProj.t * wLen, wLen - halfOp));
+    const factor = clampedDist / (wLen || 1);
+
+    const clampedX = closestWall.x1 + factor * (closestWall.x2 - closestWall.x1);
+    const clampedY = closestWall.y1 + factor * (closestWall.y2 - closestWall.y1);
+    const angle = Math.atan2(closestWall.y2 - closestWall.y1, closestWall.x2 - closestWall.x1);
+
+    const candidate = { wall: closestWall, x: clampedX, y: clampedY, angle, length: opLen, nominalMeters: nominalM };
+    const hasCollision = checkOpeningCollision(candidate, ignoreOpeningIndex);
+
+    return { ...candidate, hasCollision };
+  }
+  return null;
+}
+
+function getStudioCanvasPoint(e) {
+  const rect = studioCanvas.getBoundingClientRect();
+  const isRealTouchFinger = (e.pointerType === 'touch');
+  const isDrafting = (studioTool === 'wall' || studioTool === 'room');
+
+  const offsetY = (isRealTouchFinger && isDrafting) ? TOUCH_Y_OFFSET : 0;
+  const rawX = e.clientX - rect.left;
+  const rawY = e.clientY - rect.top - offsetY;
+
+  let x = (rawX - studioPanX) / studioScale;
+  let y = (rawY - studioPanY) / studioScale;
+
+  let snapped = false;
+  let snappedWall = null;
+
+  if (studioTool === 'door' || studioTool === 'slider' || studioTool === 'window') {
+    const openingCandidate = findClosestWallForOpening(x, y);
+    if (openingCandidate) {
+      return {
+        x: openingCandidate.x,
+        y: openingCandidate.y,
+        snapped: true,
+        snappedWall: openingCandidate.wall,
+        openingCandidate,
+        rawTouchX: e.clientX - rect.left,
+        rawTouchY: e.clientY - rect.top
+      };
+    }
+  }
+
+  for (const l of studioLines) {
+    if (Math.hypot(l.x1 - x, l.y1 - y) < CORNER_SNAP_DIST / studioScale) {
+      x = l.x1;
+      y = l.y1;
+      snapped = true;
+      snappedWall = l;
+      break;
+    }
+    if (Math.hypot(l.x2 - x, l.y2 - y) < CORNER_SNAP_DIST / studioScale) {
+      x = l.x2;
+      y = l.y2;
+      snapped = true;
+      snappedWall = l;
+      break;
+    }
+  }
+
+  if (!snapped) {
+    for (const l of studioLines) {
+      const proj = getPointSegmentProjection(x, y, l.x1, l.y1, l.x2, l.y2);
+      if (proj.dist < T_SNAP_DIST / studioScale && proj.t > 0.05 && proj.t < 0.95) {
+        x = proj.x;
+        y = proj.y;
+        snapped = true;
+        snappedWall = l;
+        break;
+      }
+    }
+  }
+
+  if (!snapped && studioGridSnap) {
+    x = Math.round(x / STUDIO_GRID_SIZE) * STUDIO_GRID_SIZE;
+    y = Math.round(y / STUDIO_GRID_SIZE) * STUDIO_GRID_SIZE;
+  }
+
+  return { x, y, snapped, snappedWall, rawTouchX: e.clientX - rect.left, rawTouchY: e.clientY - rect.top };
+}
+
+function getPointSegmentProjection(px, py, x1, y1, x2, y2) {
+  const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+  if (l2 === 0) return { x: x1, y: y1, dist: Math.hypot(px - x1, py - y1), t: 0 };
+  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const projX = x1 + t * (x2 - x1);
+  const projY = y1 + t * (y2 - y1);
+  return { x: projX, y: projY, dist: Math.hypot(px - projX, py - projY), t };
+}
+
+function autoStraightenOrthogonal(p1, p2) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+  const absAngle = Math.abs(angle);
+
+  if (absAngle < 15 || absAngle > 165) return { x: p2.x, y: p1.y };
+  if (Math.abs(absAngle - 90) < 15) return { x: p1.x, y: p2.y };
+  return p2;
+}
+
+function unifyAllCollinearLines() {
+  let changed = false;
+  for (let i = 0; i < studioLines.length; i++) {
+    for (let j = i + 1; j < studioLines.length; j++) {
+      const a = studioLines[i];
+      const b = studioLines[j];
+      if (a.isCavity !== b.isCavity) continue;
+
+      const aHoriz = Math.abs(a.y1 - a.y2) < 4;
+      const bHoriz = Math.abs(b.y1 - b.y2) < 4;
+      const aVert = Math.abs(a.x1 - a.x2) < 4;
+      const bVert = Math.abs(b.x1 - b.x2) < 4;
+
+      if (aHoriz && bHoriz && Math.abs(a.y1 - b.y1) < 8) {
+        const aMinX = Math.min(a.x1, a.x2);
+        const aMaxX = Math.max(a.x1, a.x2);
+        const bMinX = Math.min(b.x1, b.x2);
+        const bMaxX = Math.max(b.x1, b.x2);
+
+        if (Math.max(aMinX, bMinX) <= Math.min(aMaxX, bMaxX) + 12) {
+          a.x1 = Math.min(aMinX, bMinX);
+          a.x2 = Math.max(aMaxX, bMaxX);
+          a.y1 = (a.y1 + b.y1) / 2;
+          a.y2 = a.y1;
+          studioLines.splice(j, 1);
+          changed = true;
+          j--;
+        }
+      } else if (aVert && bVert && Math.abs(a.x1 - b.x1) < 8) {
+        const aMinY = Math.min(a.y1, a.y2);
+        const aMaxY = Math.max(a.y1, a.y2);
+        const bMinY = Math.min(b.y1, b.y2);
+        const bMaxY = Math.max(b.y1, b.y2);
+
+        if (Math.max(aMinY, bMinY) <= Math.min(aMaxY, bMaxY) + 12) {
+          a.y1 = Math.min(aMinY, bMinY);
+          a.y2 = Math.max(aMaxY, bMaxY);
+          a.x1 = (a.x1 + b.x1) / 2;
+          a.x2 = a.x1;
+          studioLines.splice(j, 1);
+          changed = true;
+          j--;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+function recordStudioState() {
+  studioUndoStack.push({
+    lines: JSON.parse(JSON.stringify(studioLines)),
+    openings: JSON.parse(JSON.stringify(studioOpenings)),
+    labels: JSON.parse(JSON.stringify(studioLabels)),
+    scale: scalePixelsPerMeter
+  });
+  studioRedoStack = [];
+  updateStudioStatus();
+}
+
+function handleStudioTouchStart(e) {
+  if (e.touches.length >= 2) {
+    e.preventDefault();
+    isStudioMultiTouch = true;
+    isStudioDrawing = false;
+    studioStartPoint = null;
+    studioCurrentPoint = null;
+
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    studioInitialPinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    studioInitialScale = studioScale;
+    studioInitialCenter = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+    studioInitialPan = { x: studioPanX, y: studioPanY };
+  }
+}
+
+function handleStudioTouchMove(e) {
+  if (e.touches.length >= 2 && isStudioMultiTouch) {
+    e.preventDefault();
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    const currentCenter = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+
+    const zoomFactor = newDist / (studioInitialPinchDist || 1);
+    const newScale = Math.max(0.3, Math.min(studioInitialScale * zoomFactor, 6.0));
+
+    const rect = studioCanvas.getBoundingClientRect();
+    const centerCanvasX = studioInitialCenter.x - rect.left;
+    const centerCanvasY = studioInitialCenter.y - rect.top;
+
+    studioScale = newScale;
+    studioPanX = studioInitialPan.x + (currentCenter.x - studioInitialCenter.x) + (centerCanvasX - studioInitialPan.x) * (1 - newScale / studioInitialScale);
+    studioPanY = studioInitialPan.y + (currentCenter.y - studioInitialCenter.y) + (centerCanvasY - studioInitialPan.y) * (1 - newScale / studioInitialScale);
+
+    renderStudio();
+  }
+}
+
+function handleStudioTouchEnd(e) {
+  if (e.touches.length === 0) {
+    setTimeout(() => { isStudioMultiTouch = false; }, 150);
+  }
+}
+
+function handleStudioPointerDown(e) {
+  if (isStudioMultiTouch) return;
+  if (e.button && e.button !== 0) return;
+  e.preventDefault();
+  const pt = getStudioCanvasPoint(e);
+
+  isStudioDrawing = true;
+  studioStartPoint = pt;
+  studioCurrentPoint = pt;
+
+  // Only allow dragging an opening if the pointer down is actually on the selected door/window
+  if (studioTool === 'select' && selectedStudioEntity && selectedStudioEntity.type === 'opening') {
+    const op = studioOpenings[selectedStudioEntity.index];
+    if (Math.hypot(pt.x - op.x, pt.y - op.y) < 30 / studioScale) {
+      selectedStudioEntity.isDragging = true;
+    }
+  }
+
+  renderStudio();
+}
+
+function handleStudioPointerMove(e) {
+  if (!isStudioDrawing || isStudioMultiTouch) return;
+  e.preventDefault();
+  let pt = getStudioCanvasPoint(e);
+
+  if (studioTool === 'wall') {
+    pt = autoStraightenOrthogonal(studioStartPoint, pt);
+  } else if (studioTool === 'select' && selectedStudioEntity && selectedStudioEntity.isDragging) {
+    const op = studioOpenings[selectedStudioEntity.index];
+    const candidate = findClosestWallForOpening(pt.x, pt.y, selectedStudioEntity.index);
+    if (candidate && !candidate.hasCollision) {
+      op.x = candidate.x;
+      op.y = candidate.y;
+      op.angle = candidate.angle;
+      op.wallRef = candidate.wall;
+    }
+  }
+
+  studioCurrentPoint = pt;
+  renderStudio();
+}
+
+function handleStudioPointerUp(e) {
+  if (!isStudioDrawing || isStudioMultiTouch) {
+    isStudioDrawing = false;
+    studioStartPoint = null;
+    studioCurrentPoint = null;
+    renderStudio();
+    return;
+  }
+  e.preventDefault();
+  isStudioDrawing = false;
+
+  const p1 = studioStartPoint;
+  let p2 = studioCurrentPoint;
+  const isTap = p1 && p2 && Math.hypot(p2.x - p1.x, p2.y - p1.y) < 12 / studioScale;
+
+  if (selectedStudioEntity && selectedStudioEntity.isDragging) {
+    selectedStudioEntity.isDragging = false;
+    recordStudioState();
+    renderStudio();
+    return;
+  }
+
+  if (isTap) {
+    if (studioTool === 'select') {
+      selectEntityAt(p2.x, p2.y);
+    } else if (studioTool === 'eraser') {
+      eraseStudioEntityAt(p2.x, p2.y);
+    } else if (studioTool === 'label') {
+      createRoomLabelAt(p2.x, p2.y);
+    } else if (studioTool === 'door' || studioTool === 'slider' || studioTool === 'window') {
+      stampOpeningAt(p2);
+    }
+  } else if (p1 && p2 && Math.hypot(p2.x - p1.x, p2.y - p1.y) > 8 / studioScale) {
+    if (studioTool === 'wall') {
+      recordStudioState();
+      p2 = autoStraightenOrthogonal(p1, p2);
+      studioLines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, isCavity: false });
+      unifyAllCollinearLines();
+    } else if (studioTool === 'room') {
+      recordStudioState();
+      studioLines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p1.y, isCavity: false });
+      studioLines.push({ x1: p2.x, y1: p1.y, x2: p2.x, y2: p2.y, isCavity: false });
+      studioLines.push({ x1: p2.x, y1: p2.y, x2: p1.x, y2: p2.y, isCavity: false });
+      studioLines.push({ x1: p1.x, y1: p2.y, x2: p1.x, y2: p1.y, isCavity: false });
+      unifyAllCollinearLines();
+    } else if (studioTool === 'door' || studioTool === 'slider' || studioTool === 'window') {
+      stampOpeningAt(p2);
+    }
+  }
+
+  studioStartPoint = null;
+  studioCurrentPoint = null;
+  renderStudio();
+}
+
+function selectEntityAt(x, y) {
+  // 1. Check Openings (Doors, Sliders, Windows) first with an accurate touch radius
+  const hitOpening = studioOpenings.findIndex(o => Math.hypot(o.x - x, o.y - y) < 30 / studioScale);
+  if (hitOpening !== -1) {
+    selectedStudioEntity = { type: 'opening', index: hitOpening, data: studioOpenings[hitOpening] };
+    showEditHud();
+    renderStudio();
+    return;
+  }
+
+  // 2. Check Room Labels
+  const hitLabel = studioLabels.findIndex(b => Math.hypot(b.x - x, b.y - y) < 28 / studioScale);
+  if (hitLabel !== -1) {
+    selectedStudioEntity = { type: 'label', index: hitLabel, data: studioLabels[hitLabel] };
+    showEditHud();
+    renderStudio();
+    return;
+  }
+
+  // 3. Check Walls & Witness badges
+  const hitWall = studioLines.findIndex(l => {
+    const proj = getPointSegmentProjection(x, y, l.x1, l.y1, l.x2, l.y2);
+    if (proj.dist < 20 / studioScale) return true;
+
+    const dx = l.x2 - l.x1;
+    const dy = l.y2 - l.y1;
+    const dist = Math.hypot(dx, dy) || 1;
+    const normX = -dy / dist;
+    const normY = dx / dist;
+    const badgeX = (l.x1 + l.x2) / 2 + normX * 22;
+    const badgeY = (l.y1 + l.y2) / 2 + normY * 22;
+    return Math.hypot(x - badgeX, y - badgeY) < 24 / studioScale;
+  });
+
+  if (hitWall !== -1) {
+    selectedStudioEntity = { type: 'wall', index: hitWall, data: studioLines[hitWall] };
+    showEditHud();
+    renderStudio();
+    return;
+  }
+
+  // 4. Tapping empty canvas space clears selection and hides HUD immediately
+  selectedStudioEntity = null;
+  hideEditHud();
+  renderStudio();
+}
+
+function hideEditHud() {
+  const hud = document.getElementById('studioEditHud');
+  if (hud) {
+    hud.style.display = 'none';
+  }
+}
+
+function showEditHud() {
+  const hud = document.getElementById('studioEditHud');
+  const title = document.getElementById('studioEditTitle');
+  const actions = document.getElementById('studioEditActions');
+  if (!hud || !selectedStudioEntity) return;
+
+  hud.style.display = 'flex';
+  actions.innerHTML = '';
+
+  let actionButtons = '';
+
+  if (selectedStudioEntity.type === 'opening') {
+    const op = studioOpenings[selectedStudioEntity.index];
+    if (op.type === 'door') {
+      title.innerText = '🚪 Door:';
+      actionButtons = `
+        <button class="btn-hud" onclick="toggleDoorSwing()">🔄 Swing</button>
+        <button class="btn-hud" onclick="toggleDoorHinge()">🔀 Hinge</button>
+        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
+      `;
+    } else if (op.type === 'slider') {
+      title.innerText = '🪟 Slider:';
+      actionButtons = `
+        <button class="btn-hud" onclick="toggleDoorSwing()">🔄 Track</button>
+        <button class="btn-hud" onclick="toggleDoorHinge()">🔀 Panel</button>
+        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
+      `;
+    } else if (op.type === 'window') {
+      title.innerText = '🪟 Window:';
+      actionButtons = `
+        <button class="btn-hud" onclick="cycleWindowWidth()">📏 Width</button>
+        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
+      `;
+    }
+  } else if (selectedStudioEntity.type === 'label') {
+    title.innerText = '🏷️ Label:';
+    actionButtons = `
+      <button class="btn-hud" onclick="renameSelectedLabel()">✏️ Rename</button>
+      <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
+    `;
+  } else if (selectedStudioEntity.type === 'wall') {
+    const w = studioLines[selectedStudioEntity.index];
+    title.innerText = w.isCavity ? '🧱🧱 Cavity Wall:' : '🧱 Wall:';
+    actionButtons = `
+      <button class="btn-hud" onclick="calibrateSelectedWall()">📏 Length</button>
+      <button class="btn-hud" onclick="toggleWallCavity()">🧱 Toggle Cavity</button>
+      <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
+    `;
+  }
+
+  actions.innerHTML = actionButtons + `<button class="btn-hud" onclick="dismissEditHud()" style="background: #0284c7; color: white; border-color: #38bdf8;">✓ Done</button>`;
+}
+
+function dismissEditHud() {
+  selectedStudioEntity = null;
+  hideEditHud();
+  renderStudio();
+}
+
+function hideEditHud() {
+  const hud = document.getElementById('studioEditHud');
+  if (hud) hud.style.display = 'none';
+}
+
+function toggleDoorSwing() {
+  if (!selectedStudioEntity || selectedStudioEntity.type !== 'opening') return;
+  recordStudioState();
+  const op = studioOpenings[selectedStudioEntity.index];
+  op.flipV = !op.flipV;
+  renderStudio();
+}
+
+function toggleDoorHinge() {
+  if (!selectedStudioEntity || selectedStudioEntity.type !== 'opening') return;
+  recordStudioState();
+  const op = studioOpenings[selectedStudioEntity.index];
+  op.flipH = !op.flipH;
+  renderStudio();
+}
+
+function cycleWindowWidth() {
+  if (!selectedStudioEntity || selectedStudioEntity.type !== 'opening') return;
+  recordStudioState();
+  const op = studioOpenings[selectedStudioEntity.index];
+  const widths = [0.9, 1.2, 1.8];
+  const currentM = op.length / scalePixelsPerMeter;
+  let nextIdx = (widths.findIndex(w => Math.abs(w - currentM) < 0.1) + 1) % widths.length;
+  op.nominalMeters = widths[nextIdx];
+  op.length = op.nominalMeters * scalePixelsPerMeter;
+  renderStudio();
+}
+
+function renameSelectedLabel() {
+  if (!selectedStudioEntity || selectedStudioEntity.type !== 'label') return;
+  const b = studioLabels[selectedStudioEntity.index];
+  const name = prompt("Rename room label:", b.text);
+  if (name && name.trim()) {
+    recordStudioState();
+    b.text = name.trim().toUpperCase();
+    renderStudio();
+  }
+}
+
+function toggleWallCavity() {
+  if (!selectedStudioEntity || selectedStudioEntity.type !== 'wall') return;
+  recordStudioState();
+  const w = studioLines[selectedStudioEntity.index];
+  w.isCavity = !w.isCavity;
+  showEditHud();
+  renderStudio();
+}
+
+function calibrateSelectedWall() {
+  if (!selectedStudioEntity || selectedStudioEntity.type !== 'wall') return;
+  const w = studioLines[selectedStudioEntity.index];
+  calibrateWallAt((w.x1 + w.x2) / 2, (w.y1 + w.y2) / 2);
+}
+
+function deleteSelectedStudioEntity() {
+  if (!selectedStudioEntity) return;
+  recordStudioState();
+  if (selectedStudioEntity.type === 'opening') {
+    studioOpenings.splice(selectedStudioEntity.index, 1);
+  } else if (selectedStudioEntity.type === 'label') {
+    studioLabels.splice(selectedStudioEntity.index, 1);
+  } else if (selectedStudioEntity.type === 'wall') {
+    studioLines.splice(selectedStudioEntity.index, 1);
+  }
+  selectedStudioEntity = null;
+  hideEditHud();
+  renderStudio();
+}
+
+function stampOpeningAt(pt) {
+  const candidate = pt.openingCandidate || findClosestWallForOpening(pt.x, pt.y);
+  if (!candidate) {
+    const banner = document.getElementById('studioBanner');
+    if (banner) {
+      banner.style.display = 'block';
+      banner.innerText = '⚠️ Please tap directly on a wall line';
+      setTimeout(() => {
+        if (studioTool === 'door') banner.innerText = '🚪 Slide & tap along a wall to place a 900mm swing door';
+        else if (studioTool === 'slider') banner.innerText = '🪟 Slide & tap along a wall to place a sliding door';
+        else if (studioTool === 'window') banner.innerText = '🪟 Slide & tap along a wall to stamp a 1200mm window';
+      }, 1500);
+    }
+    return;
+  }
+
+  if (candidate.hasCollision) {
+    const banner = document.getElementById('studioBanner');
+    if (banner) {
+      banner.style.display = 'block';
+      banner.innerText = '⚠️ Space blocked by an existing door or window';
+      setTimeout(() => {
+        if (studioTool === 'door') banner.innerText = '🚪 Slide & tap along a wall to place a 900mm swing door';
+        else if (studioTool === 'slider') banner.innerText = '🪟 Slide & tap along a wall to place a sliding door';
+        else if (studioTool === 'window') banner.innerText = '🪟 Slide & tap along a wall to stamp a 1200mm window';
+      }, 1500);
+    }
+    return;
+  }
+
+  recordStudioState();
+  const newOpening = {
+    type: studioTool,
+    x: candidate.x,
+    y: candidate.y,
+    angle: candidate.angle,
+    length: candidate.length,
+    nominalMeters: candidate.nominalMeters,
+    flipH: false,
+    flipV: false,
+    wallRef: candidate.wall
+  };
+  studioOpenings.push(newOpening);
+
+  selectedStudioEntity = { type: 'opening', index: studioOpenings.length - 1, data: newOpening };
+  showEditHud();
+  renderStudio();
+}
+
+function createRoomLabelAt(x, y) {
+  const commonNames = ['Living', 'Kitchen', 'Master Bed', 'Bed 2', 'Bed 3', 'Ensuite', 'Bathroom', 'Garage', 'Hallway', 'Patio', 'Alfresco'];
+  const name = prompt(`Enter room label (or choose: ${commonNames.slice(0, 5).join(', ')}):`, "Living");
+  if (name && name.trim()) {
+    recordStudioState();
+    studioLabels.push({ text: name.trim().toUpperCase(), x, y });
+    renderStudio();
+  }
+}
+
+function calibrateWallAt(x, y) {
+  const hitIndex = studioLines.findIndex(l => {
+    const proj = getPointSegmentProjection(x, y, l.x1, l.y1, l.x2, l.y2);
+    if (proj.dist < 26 / studioScale) return true;
+
+    const dx = l.x2 - l.x1;
+    const dy = l.y2 - l.y1;
+    const dist = Math.hypot(dx, dy) || 1;
+    const normX = -dy / dist;
+    const normY = dx / dist;
+    const tagX = (l.x1 + l.x2) / 2 + normX * (22 / studioScale);
+    const tagY = (l.y1 + l.y2) / 2 + normY * (22 / studioScale);
+    return Math.hypot(x - tagX, y - tagY) < 28 / studioScale;
+  });
+
+  if (hitIndex === -1) return;
+  const wall = studioLines[hitIndex];
+  const pxLen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+  const currentEst = (pxLen / scalePixelsPerMeter).toFixed(2);
+
+  const realM = prompt(`Enter true physical length for this wall in meters:`, currentEst);
+  if (realM) {
+    const meters = parseFloat(realM);
+    if (meters > 0) {
+      recordStudioState();
+      scalePixelsPerMeter = pxLen / meters;
+      document.getElementById('lblScaleDisplay').innerText = `${scalePixelsPerMeter.toFixed(1)} px/m`;
+
+      studioOpenings.forEach(op => {
+        op.length = (op.nominalMeters || 0.9) * scalePixelsPerMeter;
+      });
+
+      renderStudio();
+    }
+  }
+}
+
+function eraseStudioEntityAt(x, y) {
+  const hitWall = studioLines.findIndex(l => getPointSegmentProjection(x, y, l.x1, l.y1, l.x2, l.y2).dist < 18 / studioScale);
+  if (hitWall !== -1) {
+    recordStudioState();
+    studioLines.splice(hitWall, 1);
+    renderStudio();
+    return;
+  }
+  const hitOpening = studioOpenings.findIndex(o => Math.hypot(o.x - x, o.y - y) < 22 / studioScale);
+  if (hitOpening !== -1) {
+    recordStudioState();
+    studioOpenings.splice(hitOpening, 1);
+    renderStudio();
+    return;
+  }
+  const hitLabel = studioLabels.findIndex(b => Math.hypot(b.x - x, b.y - y) < 24 / studioScale);
+  if (hitLabel !== -1) {
+    recordStudioState();
+    studioLabels.splice(hitLabel, 1);
+    renderStudio();
+    return;
+  }
+}
+
+function studioUndo() {
+  if (studioUndoStack.length === 0) return;
+  studioRedoStack.push({
+    lines: JSON.parse(JSON.stringify(studioLines)),
+    openings: JSON.parse(JSON.stringify(studioOpenings)),
+    labels: JSON.parse(JSON.stringify(studioLabels)),
+    scale: scalePixelsPerMeter
+  });
+  const prev = studioUndoStack.pop();
+  studioLines = prev.lines;
+  studioOpenings = prev.openings;
+  studioLabels = prev.labels;
+  scalePixelsPerMeter = prev.scale;
+  selectedStudioEntity = null;
+  hideEditHud();
+  updateStudioStatus();
+  renderStudio();
+}
+
+function studioRedo() {
+  if (studioRedoStack.length === 0) return;
+  studioUndoStack.push({
+    lines: JSON.parse(JSON.stringify(studioLines)),
+    openings: JSON.parse(JSON.stringify(studioOpenings)),
+    labels: JSON.parse(JSON.stringify(studioLabels)),
+    scale: scalePixelsPerMeter
+  });
+  const next = studioRedoStack.pop();
+  studioLines = next.lines;
+  studioOpenings = next.openings;
+  studioLabels = next.labels;
+  scalePixelsPerMeter = next.scale;
+  selectedStudioEntity = null;
+  hideEditHud();
+  updateStudioStatus();
+  renderStudio();
+}
+
+function studioClear() {
+  if (studioLines.length === 0 && studioOpenings.length === 0 && studioLabels.length === 0) return;
+  if (!confirm("Clear all sketched walls, openings, and labels?")) return;
+  recordStudioState();
+  studioLines = [];
+  studioOpenings = [];
+  studioLabels = [];
+  selectedStudioEntity = null;
+  hideEditHud();
+  renderStudio();
+}
+
+function updateStudioStatus() {
+  const btnU = document.getElementById('btnStudioUndo');
+  if (btnU) btnU.disabled = studioUndoStack.length === 0;
+  const btnR = document.getElementById('btnStudioRedo');
+  if (btnR) btnR.disabled = studioRedoStack.length === 0;
+}
+
+function renderStudio() {
+  if (!studioCtx) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = studioCanvas.width / dpr;
+  const h = studioCanvas.height / dpr;
+
+  studioCtx.setTransform(1, 0, 0, 1, 0, 0);
+  studioCtx.clearRect(0, 0, studioCanvas.width, studioCanvas.height);
+  studioCtx.setTransform(dpr * studioScale, 0, 0, dpr * studioScale, dpr * studioPanX, dpr * studioPanY);
+
+  studioLines.forEach((l, idx) => {
+    const isSel = (selectedStudioEntity && selectedStudioEntity.type === 'wall' && selectedStudioEntity.index === idx);
+    studioCtx.save();
+
+    if (l.isCavity) {
+      studioCtx.strokeStyle = isSel ? '#0284c7' : '#0f172a';
+      studioCtx.lineWidth = 11;
+      studioCtx.lineCap = 'round';
+      studioCtx.lineJoin = 'round';
+      studioCtx.beginPath();
+      studioCtx.moveTo(l.x1, l.y1);
+      studioCtx.lineTo(l.x2, l.y2);
+      studioCtx.stroke();
+
+      studioCtx.strokeStyle = '#ffffff';
+      studioCtx.lineWidth = 5;
+      studioCtx.lineCap = 'square';
+      studioCtx.beginPath();
+      studioCtx.moveTo(l.x1, l.y1);
+      studioCtx.lineTo(l.x2, l.y2);
+      studioCtx.stroke();
+    } else {
+      studioCtx.strokeStyle = isSel ? '#0284c7' : '#0f172a';
+      studioCtx.lineWidth = isSel ? 6 : 5;
+      studioCtx.lineCap = 'round';
+      studioCtx.lineJoin = 'round';
+
+      studioCtx.beginPath();
+      studioCtx.moveTo(l.x1, l.y1);
+      studioCtx.lineTo(l.x2, l.y2);
+      studioCtx.stroke();
+    }
+    studioCtx.restore();
+  });
+
+  studioOpenings.forEach((op, idx) => {
+    const isSel = (selectedStudioEntity && selectedStudioEntity.type === 'opening' && selectedStudioEntity.index === idx);
+    studioCtx.save();
+    studioCtx.translate(op.x, op.y);
+    studioCtx.rotate(op.angle);
+
+    const sH = op.flipH ? -1 : 1;
+    const sV = op.flipV ? -1 : 1;
+    studioCtx.scale(sH, sV);
+
+    if (op.type === 'door') {
+      studioCtx.fillStyle = '#ffffff';
+      studioCtx.fillRect(-op.length / 2, -7, op.length, 14);
+
+      if (isSel) {
+        studioCtx.strokeStyle = '#0284c7';
+        studioCtx.lineWidth = 1.5;
+        studioCtx.strokeRect(-op.length / 2 - 2, -op.length - 2, op.length + 4, op.length + 10);
+      }
+
+      studioCtx.strokeStyle = '#b45309';
+      studioCtx.lineWidth = 2.5;
+      studioCtx.beginPath();
+      studioCtx.moveTo(-op.length / 2, 0);
+      studioCtx.lineTo(-op.length / 2, -op.length);
+      studioCtx.stroke();
+
+      studioCtx.beginPath();
+      studioCtx.setLineDash([3, 3]);
+      studioCtx.arc(-op.length / 2, 0, op.length, -Math.PI / 2, 0, false);
+      studioCtx.stroke();
+    } else if (op.type === 'slider') {
+      studioCtx.fillStyle = '#ffffff';
+      studioCtx.fillRect(-op.length / 2, -8, op.length, 16);
+
+      if (isSel) {
+        studioCtx.strokeStyle = '#0284c7';
+        studioCtx.lineWidth = 1.5;
+        studioCtx.strokeRect(-op.length / 2 - 2, -10, op.length + 4, 20);
+      }
+
+      studioCtx.strokeStyle = '#0d9488';
+      studioCtx.lineWidth = 2.5;
+      studioCtx.strokeRect(-op.length / 2, -6, op.length / 2 + 4, 4);
+      studioCtx.strokeRect(-2, 2, op.length / 2 + 2, 4);
+    } else if (op.type === 'window') {
+      studioCtx.fillStyle = '#ffffff';
+      studioCtx.fillRect(-op.length / 2, -6, op.length, 12);
+
+      if (isSel) {
+        studioCtx.strokeStyle = '#0284c7';
+        studioCtx.lineWidth = 1.5;
+        studioCtx.strokeRect(-op.length / 2 - 2, -8, op.length + 4, 16);
+      }
+
+      studioCtx.strokeStyle = '#0284c7';
+      studioCtx.lineWidth = 2;
+      studioCtx.strokeRect(-op.length / 2, -4, op.length, 8);
+      studioCtx.beginPath();
+      studioCtx.moveTo(-op.length / 2, 0);
+      studioCtx.lineTo(op.length / 2, 0);
+      studioCtx.stroke();
+    }
+    studioCtx.restore();
+  });
+
+  if (isStudioDrawing && studioCurrentPoint && (studioTool === 'door' || studioTool === 'slider' || studioTool === 'window')) {
+    const candidate = studioCurrentPoint.openingCandidate || findClosestWallForOpening(studioCurrentPoint.x, studioCurrentPoint.y);
+    if (candidate) {
+      studioCtx.save();
+      studioCtx.translate(candidate.x, candidate.y);
+      studioCtx.rotate(candidate.angle);
+
+      const previewColor = candidate.hasCollision ? '#ef4444' : '#0284c7';
+
+      if (studioTool === 'door') {
+        studioCtx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        studioCtx.fillRect(-candidate.length / 2, -6, candidate.length, 12);
+        studioCtx.strokeStyle = candidate.hasCollision ? '#ef4444' : '#d97706';
+        studioCtx.lineWidth = 2;
+        studioCtx.beginPath();
+        studioCtx.moveTo(-candidate.length / 2, 0);
+        studioCtx.lineTo(-candidate.length / 2, -candidate.length);
+        studioCtx.stroke();
+        studioCtx.beginPath();
+        studioCtx.setLineDash([3, 3]);
+        studioCtx.arc(-candidate.length / 2, 0, candidate.length, -Math.PI / 2, 0, false);
+        studioCtx.stroke();
+      } else if (studioTool === 'slider') {
+        studioCtx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        studioCtx.fillRect(-candidate.length / 2, -8, candidate.length, 16);
+        studioCtx.strokeStyle = candidate.hasCollision ? '#ef4444' : '#0d9488';
+        studioCtx.lineWidth = 2;
+        studioCtx.strokeRect(-candidate.length / 2, -5, candidate.length / 2 + 4, 4);
+        studioCtx.strokeRect(-2, 2, candidate.length / 2 + 2, 4);
+      } else {
+        studioCtx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        studioCtx.fillRect(-candidate.length / 2, -5, candidate.length, 10);
+        studioCtx.strokeStyle = previewColor;
+        studioCtx.lineWidth = 2;
+        studioCtx.strokeRect(-candidate.length / 2, -4, candidate.length, 8);
+      }
+      studioCtx.restore();
+    }
+  }
+
+  studioLabels.forEach((b, idx) => {
+    const isSel = (selectedStudioEntity && selectedStudioEntity.type === 'label' && selectedStudioEntity.index === idx);
+    studioCtx.save();
+    studioCtx.font = 'bold 13px -apple-system, sans-serif';
+    studioCtx.textAlign = 'center';
+    studioCtx.textBaseline = 'middle';
+    const textW = studioCtx.measureText(b.text).width;
+
+    studioCtx.fillStyle = isSel ? '#e0f2fe' : 'rgba(241, 245, 249, 0.9)';
+    studioCtx.strokeStyle = isSel ? '#0284c7' : '#cbd5e1';
+    studioCtx.lineWidth = isSel ? 1.5 : 1;
+    studioCtx.fillRect(b.x - textW / 2 - 8, b.y - 10, textW + 16, 20);
+    studioCtx.strokeRect(b.x - textW / 2 - 8, b.y - 10, textW + 16, 20);
+
+    studioCtx.fillStyle = '#1e293b';
+    studioCtx.fillText(b.text, b.x, b.y);
+    studioCtx.restore();
+  });
+
+  studioLines.forEach(l => {
+    const midX = (l.x1 + l.x2) / 2;
+    const midY = (l.y1 + l.y2) / 2;
+    const lenPx = Math.hypot(l.x2 - l.x1, l.y2 - l.y1);
+    const meters = (lenPx / scalePixelsPerMeter).toFixed(1) + 'm';
+
+    const dx = l.x2 - l.x1;
+    const dy = l.y2 - l.y1;
+    const dist = Math.hypot(dx, dy) || 1;
+    const normX = -dy / dist;
+    const normY = dx / dist;
+
+    const offsetDist = 22;
+    const badgeX = midX + normX * offsetDist;
+    const badgeY = midY + normY * offsetDist;
+
+    studioCtx.save();
+
+    studioCtx.strokeStyle = 'rgba(148, 163, 184, 0.7)';
+    studioCtx.lineWidth = 1;
+    studioCtx.setLineDash([2, 2]);
+    studioCtx.beginPath();
+    studioCtx.moveTo(midX, midY);
+    studioCtx.lineTo(badgeX, badgeY);
+    studioCtx.stroke();
+    studioCtx.setLineDash([]);
+
+    studioCtx.fillStyle = '#64748b';
+    studioCtx.beginPath();
+    studioCtx.arc(midX, midY, 2, 0, Math.PI * 2);
+    studioCtx.fill();
+
+    studioCtx.font = '600 10.5px -apple-system, sans-serif';
+    studioCtx.textAlign = 'center';
+    studioCtx.textBaseline = 'middle';
+    const tagW = studioCtx.measureText(meters).width + 10;
+
+    studioCtx.fillStyle = '#ffffff';
+    studioCtx.strokeStyle = '#cbd5e1';
+    studioCtx.lineWidth = 1.2;
+    studioCtx.beginPath();
+    studioCtx.roundRect(badgeX - tagW / 2, badgeY - 8, tagW, 16, 4);
+    studioCtx.fill();
+    studioCtx.stroke();
+
+    studioCtx.fillStyle = '#475569';
+    studioCtx.fillText(meters, badgeX, badgeY);
+    studioCtx.restore();
+  });
+
+  if (isStudioDrawing && studioStartPoint && studioCurrentPoint) {
+    studioCtx.save();
+    studioCtx.strokeStyle = '#2563eb';
+    studioCtx.lineWidth = 3.5;
+    studioCtx.setLineDash([6, 4]);
+
+    if (studioTool === 'wall') {
+      studioCtx.beginPath();
+      studioCtx.moveTo(studioStartPoint.x, studioStartPoint.y);
+      studioCtx.lineTo(studioCurrentPoint.x, studioCurrentPoint.y);
+      studioCtx.stroke();
+    } else if (studioTool === 'room') {
+      const rx = Math.min(studioStartPoint.x, studioCurrentPoint.x);
+      const ry = Math.min(studioStartPoint.y, studioCurrentPoint.y);
+      const rw = Math.abs(studioCurrentPoint.x - studioStartPoint.x);
+      const rh = Math.abs(studioCurrentPoint.y - studioStartPoint.y);
+      studioCtx.strokeRect(rx, ry, rw, rh);
+    }
+    studioCtx.restore();
+  }
+
+  const isRealTouchFinger = (studioCurrentPoint && studioCurrentPoint.rawTouchX !== undefined);
+  const isDrafting = (studioTool === 'wall' || studioTool === 'room');
+  if (isStudioDrawing && studioCurrentPoint && isDrafting && isRealTouchFinger) {
+    studioCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const screenX = studioCurrentPoint.x * studioScale + studioPanX;
+    const screenY = studioCurrentPoint.y * studioScale + studioPanY;
+
+    studioCtx.save();
+    studioCtx.strokeStyle = 'rgba(14, 165, 233, 0.45)';
+    studioCtx.lineWidth = 1;
+    studioCtx.setLineDash([4, 4]);
+
+    studioCtx.beginPath();
+    studioCtx.moveTo(0, screenY);
+    studioCtx.lineTo(w, screenY);
+    studioCtx.stroke();
+
+    studioCtx.beginPath();
+    studioCtx.moveTo(screenX, 0);
+    studioCtx.lineTo(screenX, h);
+    studioCtx.stroke();
+
+    studioCtx.strokeStyle = '#0284c7';
+    studioCtx.lineWidth = 1.5;
+    studioCtx.setLineDash([]);
+    studioCtx.beginPath();
+    studioCtx.arc(screenX, screenY, 12, 0, Math.PI * 2);
+    studioCtx.stroke();
+
+    studioCtx.fillStyle = '#0284c7';
+    studioCtx.beginPath();
+    studioCtx.arc(screenX, screenY, 3.5, 0, Math.PI * 2);
+    studioCtx.fill();
+
+    if (studioCurrentPoint.rawTouchX !== undefined && studioCurrentPoint.rawTouchY !== undefined) {
+      studioCtx.strokeStyle = 'rgba(100, 116, 139, 0.35)';
+      studioCtx.lineWidth = 1;
+      studioCtx.setLineDash([2, 2]);
+      studioCtx.beginPath();
+      studioCtx.moveTo(screenX, screenY + 12);
+      studioCtx.lineTo(studioCurrentPoint.rawTouchX, studioCurrentPoint.rawTouchY);
+      studioCtx.stroke();
+    }
+    studioCtx.restore();
+  }
+}
+
+function finishAndApplyPlan() {
+  if (studioLines.length === 0) {
+    alert("Please sketch at least one room or wall before applying.");
+    return;
+  }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  studioLines.forEach(l => {
+    minX = Math.min(minX, l.x1, l.x2);
+    maxX = Math.max(maxX, l.x1, l.x2);
+    minY = Math.min(minY, l.y1, l.y2);
+    maxY = Math.max(maxY, l.y1, l.y2);
+  });
+
+  const pad = 40;
+  const cropW = Math.max(300, (maxX - minX) + pad * 2);
+  const cropH = Math.max(300, (maxY - minY) + pad * 2);
+
+  const offscreen = document.createElement('canvas');
+  offscreen.width = cropW;
+  offscreen.height = cropH;
+  const oCtx = offscreen.getContext('2d');
+
+  oCtx.fillStyle = '#ffffff';
+  oCtx.fillRect(0, 0, cropW, cropH);
+  oCtx.translate(-minX + pad, -minY + pad);
+
+  studioLines.forEach(l => {
+    oCtx.save();
+    if (l.isCavity) {
+      oCtx.strokeStyle = '#0f172a';
+      oCtx.lineWidth = 10;
+      oCtx.lineCap = 'round';
+      oCtx.lineJoin = 'round';
+      oCtx.beginPath();
+      oCtx.moveTo(l.x1, l.y1);
+      oCtx.lineTo(l.x2, l.y2);
+      oCtx.stroke();
+
+      oCtx.strokeStyle = '#ffffff';
+      oCtx.lineWidth = 5;
+      oCtx.lineCap = 'square';
+      oCtx.beginPath();
+      oCtx.moveTo(l.x1, l.y1);
+      oCtx.lineTo(l.x2, l.y2);
+      oCtx.stroke();
+    } else {
+      oCtx.strokeStyle = '#0f172a';
+      oCtx.lineWidth = 4.5;
+      oCtx.lineCap = 'round';
+      oCtx.lineJoin = 'round';
+      oCtx.beginPath();
+      oCtx.moveTo(l.x1, l.y1);
+      oCtx.lineTo(l.x2, l.y2);
+      oCtx.stroke();
+    }
+    oCtx.restore();
+  });
+
+  studioOpenings.forEach(op => {
+    oCtx.save();
+    oCtx.translate(op.x, op.y);
+    oCtx.rotate(op.angle);
+    const sH = op.flipH ? -1 : 1;
+    const sV = op.flipV ? -1 : 1;
+    oCtx.scale(sH, sV);
+
+    if (op.type === 'door') {
+      oCtx.fillStyle = '#ffffff';
+      oCtx.fillRect(-op.length / 2, -6, op.length, 12);
+      oCtx.strokeStyle = '#b45309';
+      oCtx.lineWidth = 2.2;
+      oCtx.beginPath();
+      oCtx.moveTo(-op.length / 2, 0);
+      oCtx.lineTo(-op.length / 2, -op.length);
+      oCtx.stroke();
+      oCtx.beginPath();
+      oCtx.setLineDash([3, 3]);
+      oCtx.arc(-op.length / 2, 0, op.length, -Math.PI / 2, 0, false);
+      oCtx.stroke();
+    } else if (op.type === 'slider') {
+      oCtx.fillStyle = '#ffffff';
+      oCtx.fillRect(-op.length / 2, -7, op.length, 14);
+      oCtx.strokeStyle = '#0d9488';
+      oCtx.lineWidth = 2.2;
+      oCtx.strokeRect(-op.length / 2, -5, op.length / 2 + 3, 3.5);
+      oCtx.strokeRect(-2, 1.5, op.length / 2 + 2, 3.5);
+    } else {
+      oCtx.fillStyle = '#ffffff';
+      oCtx.fillRect(-op.length / 2, -5, op.length, 10);
+      oCtx.strokeStyle = '#0284c7';
+      oCtx.lineWidth = 2;
+      oCtx.strokeRect(-op.length / 2, -4, op.length, 8);
+      oCtx.beginPath();
+      oCtx.moveTo(-op.length / 2, 0);
+      oCtx.lineTo(op.length / 2, 0);
+      oCtx.stroke();
+    }
+    oCtx.restore();
+  });
+
+  studioLabels.forEach(b => {
+    oCtx.save();
+    oCtx.font = 'bold 13px -apple-system, sans-serif';
+    oCtx.textAlign = 'center';
+    oCtx.textBaseline = 'middle';
+    const textW = oCtx.measureText(b.text).width;
+    oCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    oCtx.strokeStyle = '#cbd5e1';
+    oCtx.lineWidth = 1;
+    oCtx.fillRect(b.x - textW / 2 - 8, b.y - 10, textW + 16, 20);
+    oCtx.strokeRect(b.x - textW / 2 - 8, b.y - 10, textW + 16, 20);
+    oCtx.fillStyle = '#334155';
+    oCtx.fillText(b.text, b.x, b.y);
+    oCtx.restore();
+  });
+
+  studioLines.forEach(l => {
+    const midX = (l.x1 + l.x2) / 2;
+    const midY = (l.y1 + l.y2) / 2;
+    const lenPx = Math.hypot(l.x2 - l.x1, l.y2 - l.y1);
+    const meters = (lenPx / scalePixelsPerMeter).toFixed(1) + 'm';
+
+    const dx = l.x2 - l.x1;
+    const dy = l.y2 - l.y1;
+    const dist = Math.hypot(dx, dy) || 1;
+    const normX = -dy / dist;
+    const normY = dx / dist;
+
+    const offsetDist = 18;
+    const badgeX = midX + normX * offsetDist;
+    const badgeY = midY + normY * offsetDist;
+
+    oCtx.save();
+    oCtx.strokeStyle = 'rgba(203, 213, 225, 0.8)';
+    oCtx.lineWidth = 0.8;
+    oCtx.setLineDash([2, 2]);
+    oCtx.beginPath();
+    oCtx.moveTo(midX, midY);
+    oCtx.lineTo(badgeX, badgeY);
+    oCtx.stroke();
+    oCtx.setLineDash([]);
+
+    oCtx.font = '600 10px -apple-system, sans-serif';
+    oCtx.textAlign = 'center';
+    oCtx.textBaseline = 'middle';
+    const tagW = oCtx.measureText(meters).width + 8;
+    oCtx.fillStyle = '#ffffff';
+    oCtx.strokeStyle = '#cbd5e1';
+    oCtx.lineWidth = 1;
+    oCtx.beginPath();
+    oCtx.roundRect(badgeX - tagW / 2, badgeY - 7, tagW, 14, 3);
+    oCtx.fill();
+    oCtx.stroke();
+    oCtx.fillStyle = '#64748b';
+    oCtx.fillText(meters, badgeX, badgeY);
+    oCtx.restore();
+  });
+
+  const exportUrl = offscreen.toDataURL('image/png');
+  loadPlanImageFromUrl(exportUrl);
+  closeStudioModal();
 }
