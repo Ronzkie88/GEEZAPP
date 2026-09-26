@@ -150,9 +150,64 @@ body {
   flex-shrink: 0;
 }
 
-.tuning-row input[type="range"] {
-  flex: 1;
-  margin: 0 10px;
+.tuning-row input[type="range"] { 
+  flex: 1; 
+  margin: 0 10px; 
+  height: 38px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+/* Track styling */
+.tuning-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 10px;
+  background: #334155;
+  border-radius: 5px;
+  border: 1px solid #475569;
+}
+.tuning-row input[type="range"]::-moz-range-track {
+  height: 10px;
+  background: #334155;
+  border-radius: 5px;
+  border: 1px solid #475569;
+}
+
+/* Enlarge Thumb Hitbox for Thumbs / Fingers */
+.tuning-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #0284c7;
+  border: 2px solid #38bdf8;
+  margin-top: -10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  transition: transform 0.1s ease, background 0.1s ease;
+}
+.tuning-row input[type="range"]::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #0284c7;
+  border: 2px solid #38bdf8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  transition: transform 0.1s ease, background 0.1s ease;
+}
+
+/* Active touch feedback */
+.tuning-row input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+  background: #38bdf8;
+  border-color: #ffffff;
+}
+.tuning-row input[type="range"]:active::-moz-range-thumb {
+  transform: scale(1.15);
+  background: #38bdf8;
+  border-color: #ffffff;
 }
 
 #bottomArea {
