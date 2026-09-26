@@ -1,30 +1,23 @@
-let stage, underlayLayer, guideLayer, wireLayer, electricalLayer, controlLayer, measureLayer;
+let stage, underlayLayer, wireLayer, electricalLayer, controlLayer, guideLayer;
 let planImageNode = null;
 let filterReqId = null;
 let opacityReqId = null;
 
-let currentComponent = null; 
+let currentComponent = null;
 let currentWireType = 'power';
 let currentWireRoutingStyle = 'curved';
 let selectedWireForEdit = null;
 let multiTouchDetected = false;
 let isWelcomeActive = true;
 
-// Unified global scale (Pixels per Meter)
-let scalePixelsPerMeter = 45; 
-let isPlanCalibrated = false;
-
-// Tape Measure State
-let isMeasuring = false;
-let measureStart = null;
-let measureCurrent = null;
-let measureMode = 'ruler'; // 'ruler' or 'calibrate'
+let scalePixelsPerMeter = 45;
+let isCalibratingScale = false;
+let scalePoint1 = null;
 
 const SNAP_THRESHOLD = 8;
 const MAX_SNAP_DISTANCE = 160;
-
 const WIRE_HIT_WIDTH = 12;
-const COMPONENT_HIT_RADIUS = 18;
+const COMPONENT_HIT_RADIUS = 16;
 
 const WIRE_TYPES = {
   power: { name: 'Power', stroke: '#2563eb', dash: null },
@@ -91,10 +84,10 @@ Object.keys(CATALOG).forEach(k => counts[k] = 0);
 
 window.addEventListener('DOMContentLoaded', () => {
   initStage();
-  initStudio();
   bindEvents();
   setupPinchAndPan();
-  selectPointerTool(false); 
+  selectPointerTool(false);
+  initStudio();
 });
 
 function dismissWelcome() {
@@ -103,8 +96,19 @@ function dismissWelcome() {
   const pill = document.getElementById('welcomePill');
   if (pill) pill.style.display = 'none';
   const indicator = document.getElementById('modeIndicator');
-  if (indicator) indicator.style.display = 'block'; 
+  if (indicator) indicator.style.display = 'block';
   updateModeIndicatorUI();
+}
+
+function startScaleCalibration() {
+  toggleTuningDrawer();
+  isCalibratingScale = true;
+  scalePoint1 = null;
+  const banner = document.getElementById('scaleBanner');
+  if (banner) {
+    banner.style.display = 'block';
+    banner.innerText = "📏 Tap first point of known scale reference";
+  }
 }
 
 function initStage() {
@@ -121,23 +125,28 @@ function initStage() {
   wireLayer = new Konva.Layer();
   electricalLayer = new Konva.Layer();
   controlLayer = new Konva.Layer();
-  measureLayer = new Konva.Layer();
 
   stage.add(underlayLayer);
   stage.add(guideLayer);
   stage.add(wireLayer);
   stage.add(electricalLayer);
   stage.add(controlLayer);
-  stage.add(measureLayer);
 
   stage.on('click tap', handleStageTap);
-  stage.on('mousedown touchstart', handleMeasureStart);
-  stage.on('mousemove touchmove', handleMeasureMove);
-  stage.on('mouseup touchend', handleMeasureEnd);
 }
 
 function bindEvents() {
-  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    resizeStudio();
+  });
+  const uploadInput = document.getElementById('planUpload');
+  uploadInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      processImageFile(e.target.files[0]);
+      e.target.value = '';
+    }
+  });
 }
 
 function toggleBurgerMenu() {
@@ -145,7 +154,6 @@ function toggleBurgerMenu() {
   const menu = document.getElementById('burgerMenu');
   menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
   closeClearPopover();
-  closeMeasurePopover();
 }
 
 function checkAlignmentSnap(candidateX, candidateY, skipNodeId = null, currentType = null) {
@@ -157,25 +165,22 @@ function checkAlignmentSnap(candidateX, candidateY, skipNodeId = null, currentTy
   let bestDistX = Infinity;
   let bestDistY = Infinity;
 
-  const currentSnapThreshold = SNAP_THRESHOLD / stage.scaleX();
-  const currentMaxSnapDist = MAX_SNAP_DISTANCE / stage.scaleX();
-
   comps.forEach(node => {
     if (skipNodeId && node.id() === skipNodeId) return;
     if (currentType && node.getAttr('compType') !== currentType) return;
 
     const straightLineDist = Math.hypot(node.x() - candidateX, node.y() - candidateY);
-    if (straightLineDist > currentMaxSnapDist) return;
+    if (straightLineDist > MAX_SNAP_DISTANCE) return;
 
     const diffX = Math.abs(node.x() - candidateX);
-    if (diffX < currentSnapThreshold && straightLineDist < bestDistX) {
+    if (diffX < SNAP_THRESHOLD && straightLineDist < bestDistX) {
       snappedX = node.x();
       lineX = node.x();
       bestDistX = straightLineDist;
     }
 
     const diffY = Math.abs(node.y() - candidateY);
-    if (diffY < currentSnapThreshold && straightLineDist < bestDistY) {
+    if (diffY < SNAP_THRESHOLD && straightLineDist < bestDistY) {
       snappedY = node.y();
       lineY = node.y();
       bestDistY = straightLineDist;
@@ -191,15 +196,23 @@ function renderGuideLines(lineX, lineY) {
   if (lineX !== null) {
     guideLayer.add(new Konva.Line({
       points: [lineX, -5000, lineX, 5000],
-      stroke: '#06b6d4', strokeWidth: 1.5, dash: [6, 4], listening: false
+      stroke: '#06b6d4',
+      strokeWidth: 1.5,
+      dash: [6, 4],
+      listening: false
     }));
   }
+
   if (lineY !== null) {
     guideLayer.add(new Konva.Line({
       points: [-5000, lineY, 5000, lineY],
-      stroke: '#06b6d4', strokeWidth: 1.5, dash: [6, 4], listening: false
+      stroke: '#06b6d4',
+      strokeWidth: 1.5,
+      dash: [6, 4],
+      listening: false
     }));
   }
+
   guideLayer.batchDraw();
 }
 
@@ -259,13 +272,13 @@ function renderItemsView(catKey) {
     card.onclick = () => selectComponentFromLibrary(key);
     grid.appendChild(card);
   });
+
   body.appendChild(grid);
 }
 
 function openLibraryModal() {
   dismissWelcome();
   closeClearPopover();
-  closeMeasurePopover();
   clearWireControlHandle();
   clearGuideLines();
   renderCategoryView();
@@ -281,18 +294,13 @@ function selectComponentFromLibrary(type) {
   clearWireControlHandle();
   clearGuideLines();
   closeClearPopover();
-  closeMeasurePopover();
 
-  if (measureStart && measureCurrent) renderMeasureOverlay(false);
-  
   currentComponent = type;
   const item = CATALOG[type];
   document.getElementById('activeToolBtn').innerText = item.icon;
   document.getElementById('activeToolBtn').style.background = '#059669';
   document.getElementById('toolWire').classList.remove('selected');
   document.getElementById('toolDel').classList.remove('selected');
-  document.getElementById('toolMeasure').classList.remove('selected');
-  document.getElementById('toolMeasure').style.background = '#0284c7';
   document.getElementById('toolPointer').classList.remove('selected');
 
   closeLibraryModal();
@@ -302,7 +310,6 @@ function selectComponentFromLibrary(type) {
 function openWireModal() {
   dismissWelcome();
   closeClearPopover();
-  closeMeasurePopover();
   resetWiringSelection();
   clearWireControlHandle();
   clearGuideLines();
@@ -318,12 +325,8 @@ function selectWireWithStyle(type, style) {
   currentWireRoutingStyle = style;
   currentComponent = 'wire';
 
-  if (measureStart && measureCurrent) renderMeasureOverlay(false);
-
   document.getElementById('toolWire').classList.add('selected');
   document.getElementById('toolDel').classList.remove('selected');
-  document.getElementById('toolMeasure').classList.remove('selected');
-  document.getElementById('toolMeasure').style.background = '#0284c7';
   document.getElementById('toolPointer').classList.remove('selected');
   document.getElementById('activeToolBtn').innerText = '🧰';
   document.getElementById('activeToolBtn').style.background = '#d97706';
@@ -338,10 +341,7 @@ function selectQuickTool(tool) {
   clearWireControlHandle();
   clearGuideLines();
 
-  if (measureStart && measureCurrent) renderMeasureOverlay(false);
-
   if (tool === 'delete') {
-    closeMeasurePopover();
     if (currentComponent === 'delete') {
       const pop = document.getElementById('clearPopover');
       pop.style.display = (pop.style.display === 'flex') ? 'none' : 'flex';
@@ -350,8 +350,6 @@ function selectQuickTool(tool) {
       currentComponent = 'delete';
       document.getElementById('toolDel').classList.add('selected');
       document.getElementById('toolWire').classList.remove('selected');
-      document.getElementById('toolMeasure').classList.remove('selected');
-      document.getElementById('toolMeasure').style.background = '#0284c7';
       document.getElementById('toolPointer').classList.remove('selected');
       document.getElementById('activeToolBtn').innerText = '🧰';
       document.getElementById('activeToolBtn').style.background = '#d97706';
@@ -368,19 +366,20 @@ function selectPointerTool(isUserAction = true) {
   clearWireControlHandle();
   clearGuideLines();
   closeClearPopover();
-  closeMeasurePopover();
 
   document.getElementById('toolPointer').classList.add('selected');
   document.getElementById('toolDel').classList.remove('selected');
-  document.getElementById('toolMeasure').classList.remove('selected');
-  document.getElementById('toolMeasure').style.background = '#0284c7';
   document.getElementById('toolWire').classList.remove('selected');
   document.getElementById('activeToolBtn').innerText = '🧰';
   document.getElementById('activeToolBtn').style.background = '#d97706';
 
-  if (measureStart && measureCurrent) renderMeasureOverlay(false);
-  if (isUserAction) dismissWelcome();
-  if (!isWelcomeActive) updateModeIndicatorUI();
+  if (isUserAction) {
+    dismissWelcome();
+  }
+
+  if (!isWelcomeActive) {
+    updateModeIndicatorUI();
+  }
 }
 
 function closeClearPopover() {
@@ -432,7 +431,7 @@ function resetWiringSelection() {
     try {
       const ring = wiringStartNode.findOne('.highlight-ring');
       if (ring) ring.destroy();
-    } catch (e) {}
+    } catch (e) { }
     wiringStartNode = null;
     electricalLayer.batchDraw();
   }
@@ -441,7 +440,7 @@ function resetWiringSelection() {
 function updateModeIndicatorUI() {
   const indicator = document.getElementById('modeIndicator');
   if (!indicator) return;
-  
+
   if (stage) stage.container().style.cursor = currentComponent ? 'crosshair' : 'default';
 
   if (currentComponent === 'wire') {
@@ -449,16 +448,10 @@ function updateModeIndicatorUI() {
     indicator.style.background = 'rgba(49, 46, 129, 0.95)';
     indicator.style.borderColor = wt.stroke;
     indicator.innerHTML = `⚡ Wire: ${wt.name} (${currentWireRoutingStyle === 'curved' ? 'Arc' : '90°'}) <span class="mode-subtext">— Tap start, then end</span>`;
-  } else if (currentComponent === 'measure') {
-    indicator.style.background = 'rgba(2, 132, 199, 0.95)';
-    indicator.style.borderColor = '#0ea5e9';
-    indicator.innerHTML = measureMode === 'calibrate'
-      ? `🟩 Calibrate Scale <span class="mode-subtext">— Drag & snap to set baseline</span>`
-      : `📏 Drop Ruler <span class="mode-subtext">— Drag & snap to drop dimension lines</span>`;
   } else if (currentComponent === 'delete') {
     indicator.style.background = 'rgba(127, 29, 29, 0.95)';
     indicator.style.borderColor = '#ef4444';
-    indicator.innerHTML = `🗑️ Delete Tool Active <span class="mode-subtext">— Tap item to remove</span>`;
+    indicator.innerHTML = `🗑️ Delete Tool Active <span class="mode-subtext">— Tap item to remove | Tap trash again for Clear All</span>`;
   } else if (currentComponent && CATALOG[currentComponent]) {
     indicator.style.background = 'rgba(5, 150, 105, 0.95)';
     indicator.style.borderColor = '#10b981';
@@ -485,16 +478,54 @@ function recenterPlan() {
   stage.batchDraw();
 }
 
+function recenterStudioPlan() {
+  if (!studioCanvas) return;
+
+  if (studioLines.length === 0) {
+    studioScale = 1.0;
+    studioPanX = 0;
+    studioPanY = 0;
+    renderStudio();
+    return;
+  }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  studioLines.forEach(l => {
+    minX = Math.min(minX, l.x1, l.x2);
+    maxX = Math.max(maxX, l.x1, l.x2);
+    minY = Math.min(minY, l.y1, l.y2);
+    maxY = Math.max(maxY, l.y1, l.y2);
+  });
+
+  const dpr = window.devicePixelRatio || 1;
+  const canvasW = studioCanvas.width / dpr;
+  const canvasH = studioCanvas.height / dpr;
+
+  const contentW = (maxX - minX) || 100;
+  const contentH = (maxY - minY) || 100;
+
+  const padding = 80;
+  const scaleX = (canvasW - padding) / contentW;
+  const scaleY = (canvasH - padding) / contentH;
+
+  studioScale = Math.max(0.4, Math.min(Math.min(scaleX, scaleY), 3.0));
+
+  const contentCenterX = (minX + maxX) / 2;
+  const contentCenterY = (minY + maxY) / 2;
+
+  studioPanX = (canvasW / 2) - (contentCenterX * studioScale);
+  studioPanY = (canvasH / 2) - (contentCenterY * studioScale);
+
+  renderStudio();
+}
+
 function setupPinchAndPan() {
   let lastCenter = null;
   let lastDist = 0;
   const content = stage.getContent();
 
   content.addEventListener('touchstart', (e) => {
-    if (e.touches.length > 1) {
-      multiTouchDetected = true;
-      if (isMeasuring) resetTapeMeasure();
-    }
+    if (e.touches.length > 1) multiTouchDetected = true;
   }, { passive: true });
 
   content.addEventListener('touchend', (e) => {
@@ -523,7 +554,7 @@ function setupPinchAndPan() {
       const currentCenter = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
       const distRatio = newDist / (lastDist || 1);
       const oldScale = stage.scaleX();
-      const newScale = Math.max(0.2, Math.min(oldScale * distRatio, 24));
+      const newScale = Math.max(0.2, Math.min(oldScale * distRatio, 8));
 
       const mousePointTo = {
         x: (currentCenter.x - stage.x()) / oldScale,
@@ -538,10 +569,6 @@ function setupPinchAndPan() {
         x: currentCenter.x - mousePointTo.x * newScale + dx,
         y: currentCenter.y - mousePointTo.y * newScale + dy,
       });
-
-      // INVERSE SCALE TO PREVENT MASSIVE HANDLES ON ZOOM OUT
-      const handleScale = Math.min(2.0, 1 / newScale);
-      controlLayer.find('.wire-control-handle').forEach(h => h.scale({x: handleScale, y: handleScale}));
 
       stage.batchDraw();
       lastDist = newDist;
@@ -574,10 +601,11 @@ function updatePlanVisuals() {
   filterReqId = requestAnimationFrame(() => {
     const canvasEl = underlayLayer.getCanvas()._canvas;
     if (canvasEl) {
-      if (!enabled) canvasEl.style.filter = 'none';
-      else {
-        const contrastVal = 100 + (rawContrast - 50) * 5;     
-        const brightnessVal = 100 + (rawBrightness - 50) * 1.5; 
+      if (!enabled) {
+        canvasEl.style.filter = 'none';
+      } else {
+        const contrastVal = 100 + (rawContrast - 50) * 5;
+        const brightnessVal = 100 + (rawBrightness - 50) * 1.5;
         canvasEl.style.filter = `grayscale(100%) contrast(${Math.max(0, contrastVal)}%) brightness(${Math.max(10, brightnessVal)}%)`;
       }
     }
@@ -594,46 +622,22 @@ function resetPlanVisuals() {
   document.getElementById('inkBoostOptions').style.display = 'none';
   document.getElementById('rngContrast').value = 50;
   document.getElementById('rngBrightness').value = 50;
-  document.getElementById('planOpacity').value = 100;
+  document.getElementById('planOpacity').value = 50;
   document.getElementById('lblContrast').innerText = 50;
   document.getElementById('lblBrightness').innerText = 50;
-  document.getElementById('lblOpacity').innerText = 100;
+  document.getElementById('lblOpacity').innerText = 50;
   updatePlanVisuals();
-  changePlanOpacity(100);
+  changePlanOpacity(50);
 }
 
 function processImageFile(file) {
-  if (!file) return;
+  if (!file || !file.type.startsWith('image/')) return;
   dismissWelcome();
-  
-  if (file.type === 'application/pdf') {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const typedarray = new Uint8Array(e.target.result);
-        const pdf = await pdfjsLib.getDocument(typedarray).promise;
-        const page = await pdf.getPage(1);
-        
-        const viewport = page.getViewport({ scale: 2.5 });
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        
-        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-        loadPlanImageFromUrl(canvas.toDataURL('image/png'));
-      } catch (err) {
-        alert("Error loading PDF. Please try a different file.");
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  } else if (file.type.startsWith('image/')) {
-    const reader = new FileReader();
-    reader.onload = (e) => { loadPlanImageFromUrl(e.target.result); };
-    reader.readAsDataURL(file);
-  } else {
-    alert("Please upload a valid image or PDF file.");
-  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    loadPlanImageFromUrl(e.target.result);
+  };
+  reader.readAsDataURL(file);
 }
 
 function loadPlanImageFromUrl(dataUrl) {
@@ -650,7 +654,12 @@ function loadPlanImageFromUrl(dataUrl) {
     planImageNode = new Konva.Image({
       x: Math.round((cW - fitW) / 2),
       y: Math.round((cH - fitH) / 2),
-      image: img, width: fitW, height: fitH, opacity: 1.0, draggable: false, name: 'planImage'
+      image: img,
+      width: fitW,
+      height: fitH,
+      opacity: 0.5,
+      draggable: false,
+      name: 'planImage'
     });
 
     underlayLayer.add(planImageNode);
@@ -659,6 +668,7 @@ function loadPlanImageFromUrl(dataUrl) {
 
     document.getElementById('btnToggleTune').style.display = 'inline-flex';
     document.getElementById('btnRecenter').style.display = 'inline-flex';
+    document.getElementById('lblScaleDisplay').innerText = `${scalePixelsPerMeter.toFixed(1)} px/m`;
     updatePlanVisuals();
     requestAnimationFrame(resizeCanvas);
   };
@@ -684,7 +694,7 @@ function deleteUploadedPlan(fullClear = true) {
   const canvasEl = underlayLayer.getCanvas()._canvas;
   if (canvasEl) canvasEl.style.filter = 'none';
   underlayLayer.batchDraw();
-  
+
   if (fullClear) {
     document.getElementById('btnToggleTune').style.display = 'none';
     document.getElementById('btnRecenter').style.display = 'none';
@@ -697,22 +707,21 @@ function getDeviceScale() {
   return window.innerWidth < 600 ? 0.75 : 1.0;
 }
 
-function getComponentScale() {
-  const targetSymbolPx = scalePixelsPerMeter * 0.3;
-  const scaleFactor = Math.max(0.2, Math.min(targetSymbolPx / 24, 2.5));
-  return getDeviceScale() * scaleFactor;
-}
-
 function createSymbol(type, x, y, id) {
   const compId = id || ('comp_' + (++compIdCounter));
-  const s = getComponentScale();
+  const s = getDeviceScale();
 
-  const group = new Konva.Group({ 
-    x: x, y: y, scale: { x: s, y: s }, draggable: true, name: 'component', id: compId
+  const group = new Konva.Group({
+    x: x,
+    y: y,
+    scale: { x: s, y: s },
+    draggable: true,
+    name: 'component',
+    id: compId
   });
 
   group.setAttr('compType', type);
-  group.add(new Konva.Circle({ radius: 18, fill: 'transparent', hitStrokeWidth: 0 }));
+  group.add(new Konva.Circle({ radius: COMPONENT_HIT_RADIUS / s, fill: 'transparent', hitStrokeWidth: 0 }));
 
   if (type === 'downlight') {
     group.add(new Konva.Circle({ radius: 11, fill: '#fef08a', stroke: '#ca8a04', strokeWidth: 2 }));
@@ -729,7 +738,9 @@ function createSymbol(type, x, y, id) {
     group.add(new Konva.Circle({ radius: 3, y: 1, fill: '#f97316' }));
   } else if (type === 'ledstrip') {
     group.add(new Konva.Rect({ x: -16, y: -4, width: 32, height: 8, fill: '#fef08a', stroke: '#eab308', strokeWidth: 2, cornerRadius: 2 }));
-    for (let i = -10; i <= 10; i += 5) { group.add(new Konva.Circle({ radius: 1.5, x: i, y: 0, fill: '#ca8a04' })); }
+    for (let i = -10; i <= 10; i += 5) {
+      group.add(new Konva.Circle({ radius: 1.5, x: i, y: 0, fill: '#ca8a04' }));
+    }
   } else if (type === 'switch1g') {
     group.add(new Konva.Circle({ radius: 9, fill: '#dbeafe', stroke: '#2563eb', strokeWidth: 2 }));
     group.add(new Konva.Line({ points: [6, -6, 12, -12], stroke: '#2563eb', strokeWidth: 2 }));
@@ -938,7 +949,6 @@ function createWire(fromId, toId, wireId = null, recordHistory = true, type = nu
   const pts = computePointsForWire(from.x(), from.y(), to.x(), to.y(), rStyle, customMidX, customMidY);
   const midPoint = (rStyle === 'orthogonal') ? { x: pts[2], y: (pts[1] + pts[5]) / 2 } : { x: pts[2], y: pts[3] };
 
-  // STROKE SCALE DISABLED: Prevents wires blowing out on zoom
   const line = new Konva.Line({
     id: id,
     points: pts,
@@ -946,8 +956,7 @@ function createWire(fromId, toId, wireId = null, recordHistory = true, type = nu
     strokeWidth: 2.5,
     dash: style.dash,
     tension: (rStyle === 'curved') ? 0.5 : 0,
-    hitStrokeWidth: WIRE_HIT_WIDTH,
-    strokeScaleEnabled: false
+    hitStrokeWidth: WIRE_HIT_WIDTH
   });
 
   const wireRecord = { id, fromId, toId, type: wType, routingStyle: rStyle, midX: midPoint.x, midY: midPoint.y, lineNode: line };
@@ -979,8 +988,6 @@ function showWireControlHandle(w) {
   clearWireControlHandle();
   selectedWireForEdit = w;
 
-  const handleScale = Math.min(2.0, 1 / stage.scaleX());
-
   const handle = new Konva.Circle({
     x: w.midX,
     y: w.midY,
@@ -991,8 +998,7 @@ function showWireControlHandle(w) {
     draggable: true,
     name: 'wire-control-handle',
     shadowColor: 'black',
-    shadowBlur: 6,
-    scale: {x: handleScale, y: handleScale}
+    shadowBlur: 6
   });
 
   let oldMidX = w.midX;
@@ -1085,347 +1091,65 @@ function deleteComponent(node, recordHistory = true) {
   updateStatus();
 
   if (recordHistory) {
-    undoStack.push({ 
-      action: 'delete_component', 
-      data, 
-      cascadeWires: attached.map(w => ({ id: w.id, fromId: w.fromId, toId: w.toId, type: w.type, routingStyle: w.routingStyle, midX: w.midX, midY: w.midY })) 
+    undoStack.push({
+      action: 'delete_component',
+      data,
+      cascadeWires: attached.map(w => ({ id: w.id, fromId: w.fromId, toId: w.toId, type: w.type, routingStyle: w.routingStyle, midX: w.midX, midY: w.midY }))
     });
     redoStack.length = 0;
     updateStatus();
   }
 }
 
-/* ==========================================================================
-   DIGITAL TAPE MEASURE ENGINE (Popover Rulers, Snapping & Clamping)
-   ========================================================================== */
-
-function toggleMeasurePopover() {
-  closeClearPopover();
-  const pop = document.getElementById('measurePopover');
-  if (pop) pop.style.display = (pop.style.display === 'flex') ? 'none' : 'flex';
-}
-
-function closeMeasurePopover() {
-  const pop = document.getElementById('measurePopover');
-  if (pop) pop.style.display = 'none';
-}
-
-function startMeasureMode(mode) {
-  measureMode = mode;
-  closeMeasurePopover();
-  selectMeasureTool();
-}
-
-function clearAllRulers() {
-  closeMeasurePopover();
-  const rulers = electricalLayer.find(node => node.getAttr('compType') === 'ruler');
-  if (rulers.length === 0) return;
-  if (!confirm("Clear all dimension lines from the plan?")) return;
-  rulers.forEach(r => r.destroy());
-  electricalLayer.batchDraw();
-  updateStatus();
-}
-
-function getRelativePointerPosition(node) {
-  const transform = node.getAbsoluteTransform().copy().invert();
-  const pos = node.getStage().getPointerPosition();
-  if (!pos) return null;
-  return transform.point(pos);
-}
-
-function getStraightenedMeasurePoint(p1, p2) {
-  const dx = p2.x - p1.x;
-  const dy = p2.y - p1.y;
-  const angle = Math.abs(Math.atan2(dy, dx) * (180 / Math.PI));
-  // 3-DEGREE SNAP: Highly precise for free diagonal measuring
-  if (angle < 3 || angle > 177) return { x: p2.x, y: p1.y };
-  if (Math.abs(angle - 90) < 3) return { x: p1.x, y: p2.y };
-  return p2;
-}
-
-function resetTapeMeasure() {
-  isMeasuring = false;
-  measureStart = null;
-  measureCurrent = null;
-  if (measureLayer) {
-    measureLayer.destroyChildren();
-    measureLayer.batchDraw();
-  }
-}
-
-function handleMeasureStart(e) {
-  if (multiTouchDetected || currentComponent !== 'measure') return;
-  if (e.evt && e.evt.touches && e.evt.touches.length > 1) return;
-  
-  if (e.target && (e.target.findAncestor('.measure-handle', true) || e.target.findAncestor('.measure-interactive', true))) return;
-  if (measureStart && measureCurrent && !isMeasuring) return;
-
-  const pos = getRelativePointerPosition(stage);
-  if (pos) {
-    isMeasuring = true;
-    measureStart = pos;
-    measureCurrent = pos;
-    renderMeasureOverlay(false);
-  }
-}
-
-function handleMeasureMove(e) {
-  if (multiTouchDetected || (e.evt && e.evt.touches && e.evt.touches.length > 1)) {
-    if (isMeasuring) resetTapeMeasure();
-    return;
-  }
-  if (!isMeasuring || currentComponent !== 'measure') return;
-
-  const pos = getRelativePointerPosition(stage);
-  if (pos) {
-    measureCurrent = getStraightenedMeasurePoint(measureStart, pos);
-    renderMeasureOverlay(false);
-  }
-}
-
-function handleMeasureEnd(e) {
-  if (!isMeasuring || currentComponent !== 'measure') return;
-  isMeasuring = false;
-
-  const distPx = Math.hypot(measureCurrent.x - measureStart.x, measureCurrent.y - measureStart.y);
-  const screenDist = distPx * stage.scaleX();
-
-  if (screenDist < 4) {
-    resetTapeMeasure();
-    return;
-  }
-
-  renderMeasureOverlay(true);
-}
-
-function createDraggableMeasureHandle(x, y, isStartHandle, reverseScale, lineNode, badgeGroup) {
-  const group = new Konva.Group({ x: x, y: y, draggable: true, name: 'measure-handle' });
-  const size = 14 * reverseScale;
-  
-  const touchTarget = new Konva.Circle({ radius: 32 * reverseScale, fill: 'rgba(14, 165, 233, 0.12)', stroke: '#0ea5e9', strokeWidth: 1.5 * reverseScale });
-  const centerDot = new Konva.Circle({ radius: 3 * reverseScale, fill: '#38bdf8' });
-  const hLine = new Konva.Line({ points: [-size, 0, size, 0], stroke: '#38bdf8', strokeWidth: 1 * reverseScale });
-  const vLine = new Konva.Line({ points: [0, -size, 0, size], stroke: '#38bdf8', strokeWidth: 1 * reverseScale });
-
-  group.add(touchTarget, centerDot, hLine, vLine);
-
-  group.on('dragmove', () => {
-    let candidateX = group.x();
-    let candidateY = group.y();
-
-    const snap = checkAlignmentSnap(candidateX, candidateY);
-    if (snap.snappedX !== candidateX || snap.snappedY !== candidateY) {
-      candidateX = snap.snappedX;
-      candidateY = snap.snappedY;
-    } else {
-      const otherPoint = isStartHandle ? measureCurrent : measureStart;
-      const straightened = getStraightenedMeasurePoint(otherPoint, { x: candidateX, y: candidateY });
-      candidateX = straightened.x;
-      candidateY = straightened.y;
-    }
-
-    group.position({ x: candidateX, y: candidateY });
-
-    if (isStartHandle) measureStart = { x: candidateX, y: candidateY };
-    else measureCurrent = { x: candidateX, y: candidateY };
-    
-    updateMeasureGeometry(lineNode, badgeGroup, reverseScale);
-  });
-
-  group.on('dragend', () => { renderMeasureOverlay(true); });
-  return group;
-}
-
-function updateMeasureGeometry(lineNode, badgeGroup, reverseScale) {
-  lineNode.points([measureStart.x, measureStart.y, measureCurrent.x, measureCurrent.y]);
-  const distPx = Math.hypot(measureCurrent.x - measureStart.x, measureCurrent.y - measureStart.y);
-  const mm = Math.round((distPx / scalePixelsPerMeter) * 1000) + 'mm';
-  const midX = (measureStart.x + measureCurrent.x) / 2;
-  const midY = (measureStart.y + measureCurrent.y) / 2;
-
-  badgeGroup.position({ x: midX, y: midY - (22 * reverseScale) });
-  const txt = badgeGroup.findOne('.measure-text');
-  if (txt) txt.text(mm);
-  measureLayer.batchDraw();
-}
-
-function renderMeasureOverlay(interactive = false) {
-  measureLayer.destroyChildren();
-  if (!measureStart || !measureCurrent) return;
-
-  const trueReverseScale = 1 / stage.scaleX();
-  const reverseScale = Math.min(1.5, trueReverseScale);
-
-  const line = new Konva.Line({
-    points: [measureStart.x, measureStart.y, measureCurrent.x, measureCurrent.y],
-    stroke: '#0ea5e9', strokeWidth: 2 * trueReverseScale, dash: [6 * trueReverseScale, 4 * trueReverseScale], listening: false
-  });
-  measureLayer.add(line);
-
-  const distPx = Math.hypot(measureCurrent.x - measureStart.x, measureCurrent.y - measureStart.y);
-  const mm = Math.round((distPx / scalePixelsPerMeter) * 1000) + 'mm';
-  const midX = (measureStart.x + measureCurrent.x) / 2;
-  const midY = (measureStart.y + measureCurrent.y) / 2;
-
-  const badgeGroup = new Konva.Group({ x: midX, y: midY - (22 * reverseScale), name: 'measure-interactive', listening: interactive });
-
-  const distText = new Konva.Text({
-    text: mm, fontSize: 13 * reverseScale, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * reverseScale, name: 'measure-text'
-  });
-  const distBg = new Konva.Rect({
-    width: distText.width(), height: distText.height(), fill: '#0284c7', cornerRadius: 4 * reverseScale
-  });
-
-  badgeGroup.add(distBg, distText);
-  let totalBadgeW = distText.width();
-
-  if (interactive) {
-    let btnOffsetX = distText.width() + (6 * reverseScale);
-
-    const actionBtn = new Konva.Group({ x: btnOffsetX, y: 0 });
-    const btnString = measureMode === 'calibrate' ? '🟩 Set Scale' : '✓ Drop Ruler';
-    const btnColor = measureMode === 'calibrate' ? '#10b981' : '#0284c7';
-
-    const actionText = new Konva.Text({ text: btnString, fontSize: 13 * reverseScale, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * reverseScale });
-    const actionBg = new Konva.Rect({ width: actionText.width(), height: actionText.height(), fill: btnColor, cornerRadius: 4 * reverseScale });
-    
-    actionBtn.add(actionBg, actionText);
-    actionBtn.on('click tap', (e) => { 
-      e.cancelBubble = true; 
-      if (measureMode === 'calibrate') confirmMeasureCalibration();
-      else commitPersistentRuler();
-    });
-    badgeGroup.add(actionBtn);
-    btnOffsetX += actionText.width() + (6 * reverseScale);
-
-    const resetBtn = new Konva.Group({ x: btnOffsetX, y: 0 });
-    const resetText = new Konva.Text({ text: '✕', fontSize: 13 * reverseScale, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * reverseScale });
-    const resetBg = new Konva.Rect({ width: resetText.width(), height: resetText.height(), fill: '#ef4444', cornerRadius: 4 * reverseScale });
-    resetBtn.add(resetBg, resetText);
-    resetBtn.on('click tap', (e) => { e.cancelBubble = true; resetTapeMeasure(); });
-    badgeGroup.add(resetBtn);
-
-    totalBadgeW = btnOffsetX + resetText.width();
-
-    const handleStart = createDraggableMeasureHandle(measureStart.x, measureStart.y, true, reverseScale, line, badgeGroup);
-    const handleEnd = createDraggableMeasureHandle(measureCurrent.x, measureCurrent.y, false, reverseScale, line, badgeGroup);
-    measureLayer.add(handleStart, handleEnd);
-  }
-
-  badgeGroup.offsetX(totalBadgeW / 2);
-  measureLayer.add(badgeGroup);
-  measureLayer.batchDraw();
-}
-
-function commitPersistentRuler() {
-  if (!measureStart || !measureCurrent) return;
-  const distPx = Math.hypot(measureCurrent.x - measureStart.x, measureCurrent.y - measureStart.y);
-  const mm = Math.round((distPx / scalePixelsPerMeter) * 1000);
-
-  const rulerGroup = new Konva.Group({
-    name: 'component',
-    compType: 'ruler',
-    draggable: true,
-    id: 'ruler_' + (++compIdCounter)
-  });
-
-  const s = getComponentScale(); // Anchors size to the component layout, preventing zoom blowouts
-
-  rulerGroup.add(new Konva.Line({
-    points: [measureStart.x, measureStart.y, measureCurrent.x, measureCurrent.y],
-    stroke: '#0ea5e9', strokeWidth: 2.5, dash: [8, 6], strokeScaleEnabled: false
-  }));
-
-  const midX = (measureStart.x + measureCurrent.x) / 2;
-  const midY = (measureStart.y + measureCurrent.y) / 2;
-
-  const badge = new Konva.Group({ x: midX, y: midY });
-  const txt = new Konva.Text({ text: mm + 'mm', fontSize: 14 * s, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * s });
-  const bg = new Konva.Rect({ width: txt.width(), height: txt.height(), fill: '#0284c7', cornerRadius: 4 * s });
-  
-  badge.add(bg, txt);
-  badge.offsetX(txt.width() / 2);
-  badge.offsetY(txt.height() / 2);
-  rulerGroup.add(badge);
-
-  rulerGroup.on('click tap', (e) => {
-    e.cancelBubble = true;
-    if (currentComponent === 'delete') {
-      rulerGroup.destroy();
-      electricalLayer.batchDraw();
-    }
-  });
-
-  electricalLayer.add(rulerGroup);
-  electricalLayer.batchDraw();
-
-  resetTapeMeasure();
-  selectPointerTool();
-}
-
-function confirmMeasureCalibration() {
-  if (!measureStart || !measureCurrent) return;
-  const distPx = Math.hypot(measureCurrent.x - measureStart.x, measureCurrent.y - measureStart.y);
-  const currentMm = Math.round((distPx / scalePixelsPerMeter) * 1000);
-
-  const input = prompt(`Current scale reading: ${currentMm}mm\n\nEnter true physical length in millimeters (e.g. 820 or 2550):`, currentMm);
-  if (input) {
-    const parsedMm = parseFloat(input);
-    if (parsedMm > 0) {
-      const parsedMeters = parsedMm / 1000;
-      scalePixelsPerMeter = distPx / parsedMeters;
-      isPlanCalibrated = true;
-
-      const s = getComponentScale();
-      const comps = electricalLayer.find('.component');
-      comps.forEach(c => c.scale({ x: s, y: s }));
-      electricalLayer.batchDraw();
-
-      alert(`Plan calibrated successfully: ${parsedMm}mm (${scalePixelsPerMeter.toFixed(1)} px/m)`);
-
-      const oldStamp = underlayLayer.findOne('.scale-stamp');
-      if (oldStamp) oldStamp.destroy();
-
-      const stampGroup = new Konva.Group({ name: 'scale-stamp', listening: false });
-      
-      stampGroup.add(new Konva.Line({
-        points: [measureStart.x, measureStart.y, measureCurrent.x, measureCurrent.y],
-        stroke: '#10b981', strokeWidth: 2.5, dash: [8, 6], strokeScaleEnabled: false
-      }));
-
-      const midX = (measureStart.x + measureCurrent.x) / 2;
-      const midY = (measureStart.y + measureCurrent.y) / 2;
-
-      const badge = new Konva.Group({ x: midX, y: midY });
-      const txt = new Konva.Text({ text: 'Scale: ' + parsedMm + 'mm', fontSize: 13 * s, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * s });
-      const bg = new Konva.Rect({ width: txt.width(), height: txt.height(), fill: '#059669', cornerRadius: 4 * s });
-      
-      badge.add(bg, txt);
-      badge.offsetX(txt.width() / 2);
-      badge.offsetY(txt.height() / 2);
-      stampGroup.add(badge);
-
-      underlayLayer.add(stampGroup);
-      underlayLayer.batchDraw();
-
-      document.getElementById('lblScaleDisplay').innerText = `${parsedMm}mm`;
-
-      resetTapeMeasure();
-      selectPointerTool();
-    }
-  }
-}
-
 function handleStageTap(e) {
   dismissWelcome();
   document.getElementById('burgerMenu').style.display = 'none';
+  if (multiTouchDetected) return;
 
-  if (multiTouchDetected || currentComponent === 'measure') return;
+  if (isCalibratingScale) {
+    const transform = stage.getAbsoluteTransform().copy().invert();
+    const pointer = stage.getPointerPosition();
+    const pos = transform.point(pointer);
 
-  if (e.target === stage || e.target.hasName('planImage') || e.target.hasName('scale-stamp')) {
+    if (!scalePoint1) {
+      scalePoint1 = pos;
+      const banner = document.getElementById('scaleBanner');
+      if (banner) banner.innerText = "📏 Tap second point of known scale reference";
+
+      const dot = new Konva.Circle({ x: pos.x, y: pos.y, radius: 5, fill: '#7c3aed', name: 'scale-anchor' });
+      guideLayer.add(dot);
+      guideLayer.batchDraw();
+    } else {
+      isCalibratingScale = false;
+      const banner = document.getElementById('scaleBanner');
+      if (banner) banner.style.display = 'none';
+      guideLayer.destroyChildren();
+      guideLayer.batchDraw();
+
+      const pixelDist = Math.hypot(pos.x - scalePoint1.x, pos.y - scalePoint1.y);
+      const realMetersPrompt = prompt("Enter real-world length between these two points in meters (e.g. 2.5):", "2.5");
+
+      if (realMetersPrompt) {
+        const meters = parseFloat(realMetersPrompt);
+        if (meters > 0) {
+          scalePixelsPerMeter = pixelDist / meters;
+          document.getElementById('lblScaleDisplay').innerText = `${scalePixelsPerMeter.toFixed(1)} px/m`;
+
+          studioOpenings.forEach(op => {
+            op.length = (op.nominalMeters || 0.9) * scalePixelsPerMeter;
+          });
+
+          alert(`Scale calibrated successfully! (${scalePixelsPerMeter.toFixed(1)} pixels/meter)`);
+        }
+      }
+      scalePoint1 = null;
+    }
+    return;
+  }
+
+  if (e.target === stage || e.target.hasName('planImage')) {
     clearWireControlHandle();
     closeClearPopover();
-    closeMeasurePopover();
   }
 
   if (!currentComponent || currentComponent === 'delete' || currentComponent === 'wire') return;
@@ -1572,14 +1296,9 @@ function openQuoteModal() {
 
   let totalMeters = 0;
   wires.forEach(w => {
-    if (w.lineNode) {
-      const pts = w.lineNode.points();
-      let pxLength = 0;
-      for (let i = 0; i < pts.length - 2; i += 2) {
-        pxLength += Math.hypot(pts[i+2] - pts[i], pts[i+3] - pts[i+1]);
-      }
-      totalMeters += (pxLength / scalePixelsPerMeter) * 1.15;
-    }
+    const f = electricalLayer.findOne('#' + w.fromId);
+    const t = electricalLayer.findOne('#' + w.toId);
+    if (f && t) totalMeters += (Math.hypot(t.x() - f.x(), t.y() - f.y()) / scalePixelsPerMeter) * 1.15;
   });
 
   if (totalMeters > 0) {
@@ -1630,6 +1349,7 @@ let studioCurrentPoint = null;
 const STUDIO_GRID_SIZE = 20;
 const CORNER_SNAP_DIST = 26;
 const T_SNAP_DIST = 16;
+const TOUCH_Y_OFFSET = 45;
 
 function initStudio() {
   studioCanvas = document.getElementById('studioCanvas');
@@ -1649,15 +1369,13 @@ function initStudio() {
 function openStudioModal() {
   dismissWelcome();
   const modal = document.getElementById('studioModal');
-  if (!modal) return;
   modal.style.display = 'flex';
   setStudioTool('wall');
   resizeStudio();
 }
 
 function closeStudioModal() {
-  const modal = document.getElementById('studioModal');
-  if (modal) modal.style.display = 'none';
+  document.getElementById('studioModal').style.display = 'none';
   hideEditHud();
 }
 
@@ -1730,8 +1448,7 @@ function setStudioTool(tool) {
 
 function toggleStudioGridSnap() {
   studioGridSnap = !studioGridSnap;
-  const btn = document.getElementById('btnStudioSnap');
-  if (btn) btn.classList.toggle('active-toggle', studioGridSnap);
+  document.getElementById('btnStudioSnap').classList.toggle('active-toggle', studioGridSnap);
 }
 
 function checkOpeningCollision(candidate, ignoreIndex = -1) {
@@ -1988,6 +1705,7 @@ function handleStudioPointerDown(e) {
   studioStartPoint = pt;
   studioCurrentPoint = pt;
 
+  // Only allow dragging an opening if the pointer down is actually on the selected door/window
   if (studioTool === 'select' && selectedStudioEntity && selectedStudioEntity.type === 'opening') {
     const op = studioOpenings[selectedStudioEntity.index];
     if (Math.hypot(pt.x - op.x, pt.y - op.y) < 30 / studioScale) {
@@ -2076,6 +1794,7 @@ function handleStudioPointerUp(e) {
 }
 
 function selectEntityAt(x, y) {
+  // 1. Check Openings (Doors, Sliders, Windows) first with an accurate touch radius
   const hitOpening = studioOpenings.findIndex(o => Math.hypot(o.x - x, o.y - y) < 30 / studioScale);
   if (hitOpening !== -1) {
     selectedStudioEntity = { type: 'opening', index: hitOpening, data: studioOpenings[hitOpening] };
@@ -2084,6 +1803,7 @@ function selectEntityAt(x, y) {
     return;
   }
 
+  // 2. Check Room Labels
   const hitLabel = studioLabels.findIndex(b => Math.hypot(b.x - x, b.y - y) < 28 / studioScale);
   if (hitLabel !== -1) {
     selectedStudioEntity = { type: 'label', index: hitLabel, data: studioLabels[hitLabel] };
@@ -2092,6 +1812,7 @@ function selectEntityAt(x, y) {
     return;
   }
 
+  // 3. Check Walls & Witness badges
   const hitWall = studioLines.findIndex(l => {
     const proj = getPointSegmentProjection(x, y, l.x1, l.y1, l.x2, l.y2);
     if (proj.dist < 20 / studioScale) return true;
@@ -2113,6 +1834,7 @@ function selectEntityAt(x, y) {
     return;
   }
 
+  // 4. Tapping empty canvas space clears selection and hides HUD immediately
   selectedStudioEntity = null;
   hideEditHud();
   renderStudio();
@@ -2120,7 +1842,9 @@ function selectEntityAt(x, y) {
 
 function hideEditHud() {
   const hud = document.getElementById('studioEditHud');
-  if (hud) hud.style.display = 'none';
+  if (hud) {
+    hud.style.display = 'none';
+  }
 }
 
 function showEditHud() {
@@ -2180,6 +1904,11 @@ function dismissEditHud() {
   selectedStudioEntity = null;
   hideEditHud();
   renderStudio();
+}
+
+function hideEditHud() {
+  const hud = document.getElementById('studioEditHud');
+  if (hud) hud.style.display = 'none';
 }
 
 function toggleDoorSwing() {
@@ -2409,44 +2138,15 @@ function studioRedo() {
   renderStudio();
 }
 
-function recenterStudioPlan() {
-  if (!studioCanvas) return;
-
-  if (studioLines.length === 0) {
-    studioScale = 1.0;
-    studioPanX = 0;
-    studioPanY = 0;
-    renderStudio();
-    return;
-  }
-
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  studioLines.forEach(l => {
-    minX = Math.min(minX, l.x1, l.x2);
-    maxX = Math.max(maxX, l.x1, l.x2);
-    minY = Math.min(minY, l.y1, l.y2);
-    maxY = Math.max(maxY, l.y1, l.y2);
-  });
-
-  const dpr = window.devicePixelRatio || 1;
-  const canvasW = studioCanvas.width / dpr;
-  const canvasH = studioCanvas.height / dpr;
-
-  const contentW = (maxX - minX) || 100;
-  const contentH = (maxY - minY) || 100;
-
-  const padding = 80;
-  const scaleX = (canvasW - padding) / contentW;
-  const scaleY = (canvasH - padding) / contentH;
-
-  studioScale = Math.max(0.4, Math.min(Math.min(scaleX, scaleY), 3.0));
-
-  const contentCenterX = (minX + maxX) / 2;
-  const contentCenterY = (minY + maxY) / 2;
-
-  studioPanX = (canvasW / 2) - (contentCenterX * studioScale);
-  studioPanY = (canvasH / 2) - (contentCenterY * studioScale);
-
+function studioClear() {
+  if (studioLines.length === 0 && studioOpenings.length === 0 && studioLabels.length === 0) return;
+  if (!confirm("Clear all sketched walls, openings, and labels?")) return;
+  recordStudioState();
+  studioLines = [];
+  studioOpenings = [];
+  studioLabels = [];
+  selectedStudioEntity = null;
+  hideEditHud();
   renderStudio();
 }
 
@@ -2697,6 +2397,52 @@ function renderStudio() {
     }
     studioCtx.restore();
   }
+
+  const isRealTouchFinger = (studioCurrentPoint && studioCurrentPoint.rawTouchX !== undefined);
+  const isDrafting = (studioTool === 'wall' || studioTool === 'room');
+  if (isStudioDrawing && studioCurrentPoint && isDrafting && isRealTouchFinger) {
+    studioCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const screenX = studioCurrentPoint.x * studioScale + studioPanX;
+    const screenY = studioCurrentPoint.y * studioScale + studioPanY;
+
+    studioCtx.save();
+    studioCtx.strokeStyle = 'rgba(14, 165, 233, 0.45)';
+    studioCtx.lineWidth = 1;
+    studioCtx.setLineDash([4, 4]);
+
+    studioCtx.beginPath();
+    studioCtx.moveTo(0, screenY);
+    studioCtx.lineTo(w, screenY);
+    studioCtx.stroke();
+
+    studioCtx.beginPath();
+    studioCtx.moveTo(screenX, 0);
+    studioCtx.lineTo(screenX, h);
+    studioCtx.stroke();
+
+    studioCtx.strokeStyle = '#0284c7';
+    studioCtx.lineWidth = 1.5;
+    studioCtx.setLineDash([]);
+    studioCtx.beginPath();
+    studioCtx.arc(screenX, screenY, 12, 0, Math.PI * 2);
+    studioCtx.stroke();
+
+    studioCtx.fillStyle = '#0284c7';
+    studioCtx.beginPath();
+    studioCtx.arc(screenX, screenY, 3.5, 0, Math.PI * 2);
+    studioCtx.fill();
+
+    if (studioCurrentPoint.rawTouchX !== undefined && studioCurrentPoint.rawTouchY !== undefined) {
+      studioCtx.strokeStyle = 'rgba(100, 116, 139, 0.35)';
+      studioCtx.lineWidth = 1;
+      studioCtx.setLineDash([2, 2]);
+      studioCtx.beginPath();
+      studioCtx.moveTo(screenX, screenY + 12);
+      studioCtx.lineTo(studioCurrentPoint.rawTouchX, studioCurrentPoint.rawTouchY);
+      studioCtx.stroke();
+    }
+    studioCtx.restore();
+  }
 }
 
 function finishAndApplyPlan() {
@@ -2861,4 +2607,232 @@ function finishAndApplyPlan() {
   const exportUrl = offscreen.toDataURL('image/png');
   loadPlanImageFromUrl(exportUrl);
   closeStudioModal();
+}
+
+function createSymbol(type, x, y, id) {
+  const compId = id || ('comp_' + (++compIdCounter));
+  const s = getDeviceScale();
+
+  const group = new Konva.Group({
+    x: x,
+    y: y,
+    scale: { x: s, y: s },
+    draggable: true,
+    name: 'component',
+    id: compId
+  });
+
+  group.setAttr('compType', type);
+  // Hit zone for finger touch
+  group.add(new Konva.Circle({ radius: COMPONENT_HIT_RADIUS / s, fill: 'transparent', hitStrokeWidth: 0 }));
+
+  // ==========================================
+  // LIGHTING & SWITCHES (AS/NZS 1102 CONVENTIONS)
+  // ==========================================
+  if (type === 'downlight') {
+    // Circle with internal cross (Standard AS downlight)
+    group.add(new Konva.Circle({ radius: 9, stroke: '#ca8a04', strokeWidth: 2, fill: '#fef08a' }));
+    group.add(new Konva.Line({ points: [-6, 0, 6, 0], stroke: '#ca8a04', strokeWidth: 1.8 }));
+    group.add(new Konva.Line({ points: [0, -6, 0, 6], stroke: '#ca8a04', strokeWidth: 1.8 }));
+
+  } else if (type === 'batten') {
+    // Ceiling Batten Holder (Circle with solid center core)
+    group.add(new Konva.Circle({ radius: 10, stroke: '#b45309', strokeWidth: 2, fill: '#fffbeb' }));
+    group.add(new Konva.Circle({ radius: 4, fill: '#b45309' }));
+
+  } else if (type === 'pendant') {
+    // Pendant fixture (Drop line + fixture circle)
+    group.add(new Konva.Line({ points: [0, -12, 0, -2], stroke: '#ea580c', strokeWidth: 2 }));
+    group.add(new Konva.Circle({ radius: 8, stroke: '#ea580c', strokeWidth: 2, fill: '#ffedd5', y: 4 }));
+    group.add(new Konva.Circle({ radius: 2.5, fill: '#ea580c', y: 4 }));
+
+  } else if (type === 'ledstrip') {
+    // LED Extrusion channel
+    group.add(new Konva.Rect({ x: -16, y: -4, width: 32, height: 8, stroke: '#eab308', strokeWidth: 2, fill: '#fef08a', cornerRadius: 1 }));
+    group.add(new Konva.Line({ points: [-10, 0, 10, 0], stroke: '#ca8a04', strokeWidth: 1.5, dash: [3, 2] }));
+
+  } else if (type === 'switch1g') {
+    // 1G Switch (Circle + 1 flag line)
+    group.add(new Konva.Circle({ radius: 6, stroke: '#2563eb', strokeWidth: 2, fill: '#eff6ff' }));
+    group.add(new Konva.Line({ points: [4, -4, 11, -11], stroke: '#2563eb', strokeWidth: 2 }));
+
+  } else if (type === 'switch2g') {
+    // 2G Switch (Circle + 2 parallel flag lines)
+    group.add(new Konva.Circle({ radius: 6, stroke: '#2563eb', strokeWidth: 2, fill: '#eff6ff' }));
+    group.add(new Konva.Line({ points: [3, -5, 9, -11], stroke: '#2563eb', strokeWidth: 1.8 }));
+    group.add(new Konva.Line({ points: [6, -2, 12, -8], stroke: '#2563eb', strokeWidth: 1.8 }));
+
+  } else if (type === 'switch3g') {
+    // 3G Switch
+    group.add(new Konva.Circle({ radius: 6, stroke: '#2563eb', strokeWidth: 2, fill: '#eff6ff' }));
+    group.add(new Konva.Line({ points: [2, -6, 7, -11], stroke: '#2563eb', strokeWidth: 1.6 }));
+    group.add(new Konva.Line({ points: [4, -4, 10, -10], stroke: '#2563eb', strokeWidth: 1.6 }));
+    group.add(new Konva.Line({ points: [6, -2, 12, -8], stroke: '#2563eb', strokeWidth: 1.6 }));
+
+  } else if (type === 'switch4g') {
+    // 4G Switch
+    group.add(new Konva.Circle({ radius: 7, stroke: '#2563eb', strokeWidth: 2, fill: '#eff6ff' }));
+    group.add(new Konva.Text({ text: '4', x: -4, y: -5, fontSize: 10, fill: '#1d4ed8', fontStyle: 'bold' }));
+    group.add(new Konva.Line({ points: [5, -5, 12, -12], stroke: '#2563eb', strokeWidth: 2 }));
+
+  } else if (type === 'dimmer') {
+    // Dimmer switch (Switch with diagonal arrow)
+    group.add(new Konva.Circle({ radius: 7, stroke: '#475569', strokeWidth: 2, fill: '#f8fafc' }));
+    group.add(new Konva.Line({ points: [5, -5, 12, -12], stroke: '#475569', strokeWidth: 2 }));
+    group.add(new Konva.Text({ text: 'D', x: -4, y: -4.5, fontSize: 9, fill: '#d97706', fontStyle: 'bold' }));
+
+  } else if (type === 'light2way') {
+    // 2-Way switch
+    group.add(new Konva.Circle({ radius: 7, stroke: '#d97706', strokeWidth: 2, fill: '#fffbeb' }));
+    group.add(new Konva.Line({ points: [5, -5, 12, -12], stroke: '#d97706', strokeWidth: 2 }));
+    group.add(new Konva.Text({ text: '2W', x: -6, y: -4.5, fontSize: 8, fill: '#b45309', fontStyle: 'bold' }));
+
+  // ==========================================
+  // POWER & GPOs (AS/NZS 1102 CONVENTIONS)
+  // ==========================================
+  } else if (type === 'gpoSingle') {
+    // Single GPO (Semicircle + 1 pin)
+    group.add(new Konva.Arc({ innerRadius: 0, outerRadius: 10, angle: 180, rotation: 180, stroke: '#15803d', strokeWidth: 2, fill: '#f0fdf4' }));
+    group.add(new Konva.Line({ points: [0, 0, 0, -8], stroke: '#15803d', strokeWidth: 2 }));
+
+  } else if (type === 'gpo') {
+    // Standard Double GPO (Semicircle + 2 pins)
+    group.add(new Konva.Arc({ innerRadius: 0, outerRadius: 10, angle: 180, rotation: 180, stroke: '#15803d', strokeWidth: 2, fill: '#f0fdf4' }));
+    group.add(new Konva.Line({ points: [-4, 0, -4, -8], stroke: '#15803d', strokeWidth: 2 }));
+    group.add(new Konva.Line({ points: [4, 0, 4, -8], stroke: '#15803d', strokeWidth: 2 }));
+
+  } else if (type === 'gpoQuad') {
+    // Quad GPO (Wide semicircle + 4 pins)
+    group.add(new Konva.Arc({ innerRadius: 0, outerRadius: 14, angle: 180, rotation: 180, stroke: '#15803d', strokeWidth: 2, fill: '#f0fdf4' }));
+    group.add(new Konva.Line({ points: [-9, 0, -9, -8], stroke: '#15803d', strokeWidth: 1.8 }));
+    group.add(new Konva.Line({ points: [-3, 0, -3, -8], stroke: '#15803d', strokeWidth: 1.8 }));
+    group.add(new Konva.Line({ points: [3, 0, 3, -8], stroke: '#15803d', strokeWidth: 1.8 }));
+    group.add(new Konva.Line({ points: [9, 0, 9, -8], stroke: '#15803d', strokeWidth: 1.8 }));
+
+  } else if (type === 'gpoWp') {
+    // Weatherproof GPO (Double GPO inside enclosing border)
+    group.add(new Konva.Rect({ x: -12, y: -10, width: 24, height: 18, stroke: '#0369a1', strokeWidth: 1.8, fill: '#f0f9ff', cornerRadius: 2 }));
+    group.add(new Konva.Arc({ innerRadius: 0, outerRadius: 8, angle: 180, rotation: 180, stroke: '#0369a1', strokeWidth: 1.8, fill: '#e0f2fe', y: 4 }));
+    group.add(new Konva.Line({ points: [-3, 4, -3, -3], stroke: '#0369a1', strokeWidth: 1.5 }));
+    group.add(new Konva.Line({ points: [3, 4, 3, -3], stroke: '#0369a1', strokeWidth: 1.5 }));
+
+  } else if (type === 'usb') {
+    // USB GPO
+    group.add(new Konva.Arc({ innerRadius: 0, outerRadius: 10, angle: 180, rotation: 180, stroke: '#15803d', strokeWidth: 2, fill: '#f0fdf4' }));
+    group.add(new Konva.Line({ points: [-4, 0, -4, -8], stroke: '#15803d', strokeWidth: 2 }));
+    group.add(new Konva.Line({ points: [4, 0, 4, -8], stroke: '#15803d', strokeWidth: 2 }));
+    group.add(new Konva.Text({ text: 'USB', x: -8, y: 3, fontSize: 7, fill: '#166534', fontStyle: 'bold' }));
+
+  } else if (type === 'isolator') {
+    // A/C Rotary Isolator
+    group.add(new Konva.Rect({ x: -10, y: -10, width: 20, height: 20, stroke: '#b45309', strokeWidth: 2, fill: '#fffbeb', cornerRadius: 2 }));
+    group.add(new Konva.Text({ text: 'ISO', x: -8, y: -5, fontSize: 8, fill: '#9a3412', fontStyle: 'bold' }));
+
+  // ==========================================
+  // DATA & COMMS (TRIANGLE CONVENTIONS)
+  // ==========================================
+  } else if (type === 'data') {
+    // 1-Port Data (Open triangle pointing up)
+    group.add(new Konva.RegularPolygon({ sides: 3, radius: 11, stroke: '#0d9488', strokeWidth: 2, fill: '#f0fdfa' }));
+    group.add(new Konva.Text({ text: '1', x: -3, y: -2, fontSize: 8, fill: '#0f766e', fontStyle: 'bold' }));
+
+  } else if (type === 'data2') {
+    // 2-Port Data
+    group.add(new Konva.RegularPolygon({ sides: 3, radius: 11, stroke: '#0d9488', strokeWidth: 2, fill: '#f0fdfa' }));
+    group.add(new Konva.Text({ text: '2', x: -3, y: -2, fontSize: 8, fill: '#0f766e', fontStyle: 'bold' }));
+
+  } else if (type === 'data3' || type === 'data4' || type === 'data5') {
+    const num = type.replace('data', '');
+    group.add(new Konva.RegularPolygon({ sides: 3, radius: 12, stroke: '#0d9488', strokeWidth: 2, fill: '#f0fdfa' }));
+    group.add(new Konva.Text({ text: num, x: -3.5, y: -2, fontSize: 9, fill: '#0f766e', fontStyle: 'bold' }));
+
+  } else if (type === 'datarack') {
+    // Comms Cabinet (Double outline with front frame)
+    group.add(new Konva.Rect({ x: -14, y: -16, width: 28, height: 32, stroke: '#0f766e', strokeWidth: 2, fill: '#f8fafc', cornerRadius: 2 }));
+    group.add(new Konva.Rect({ x: -10, y: -12, width: 20, height: 24, stroke: '#0d9488', strokeWidth: 1.5 }));
+    group.add(new Konva.Line({ points: [-6, 0, 6, 0], stroke: '#0d9488', strokeWidth: 1.5 }));
+
+  } else if (type === 'intercom') {
+    // Wireless AP / Intercom (Broadcast waves)
+    group.add(new Konva.Circle({ radius: 4, fill: '#7c3aed' }));
+    group.add(new Konva.Arc({ innerRadius: 7, outerRadius: 8, angle: 120, rotation: 210, stroke: '#8b5cf6', strokeWidth: 1.5 }));
+    group.add(new Konva.Arc({ innerRadius: 11, outerRadius: 12, angle: 120, rotation: 210, stroke: '#8b5cf6', strokeWidth: 1.5 }));
+
+  } else if (type === 'doorstation') {
+    // Door intercom station
+    group.add(new Konva.Rect({ x: -8, y: -12, width: 16, height: 24, stroke: '#64748b', strokeWidth: 2, fill: '#f1f5f9', cornerRadius: 2 }));
+    group.add(new Konva.Circle({ radius: 3, y: -5, fill: '#0284c7' }));
+    group.add(new Konva.Circle({ radius: 2, y: 5, fill: '#64748b' }));
+
+  } else if (type === 'cctv') {
+    // Security Camera (Directional arrow / lens wedge)
+    group.add(new Konva.Circle({ radius: 6, stroke: '#0284c7', strokeWidth: 2, fill: '#e0f2fe' }));
+    group.add(new Konva.Line({ points: [0, 6, 8, 14, -8, 14], closed: true, fill: '#0284c7' }));
+
+  // ==========================================
+  // SAFETY, HVAC & BOARDS (AS/NZS 1102)
+  // ==========================================
+  } else if (type === 'smoke') {
+    // Photoelectric Smoke Alarm (Circle with 'S')
+    group.add(new Konva.Circle({ radius: 10, stroke: '#be185d', strokeWidth: 2, fill: '#fdf2f8' }));
+    group.add(new Konva.Text({ text: 'S', x: -4, y: -5, fontSize: 10, fill: '#9d174d', fontStyle: 'bold' }));
+
+  } else if (type === 'fan') {
+    // Ceiling Fan (3 Blades)
+    group.add(new Konva.Circle({ radius: 3.5, fill: '#0369a1' }));
+    group.add(new Konva.Line({ points: [0, -3, 0, -12], stroke: '#0284c7', strokeWidth: 2, strokeCap: 'round' }));
+    group.add(new Konva.Line({ points: [2.5, 1.5, 10, 6], stroke: '#0284c7', strokeWidth: 2, strokeCap: 'round' }));
+    group.add(new Konva.Line({ points: [-2.5, 1.5, -10, 6], stroke: '#0284c7', strokeWidth: 2, strokeCap: 'round' }));
+
+  } else if (type === 'exhaustfan') {
+    // Exhaust Fan (Circle with internal cross / 'X')
+    group.add(new Konva.Circle({ radius: 10, stroke: '#0284c7', strokeWidth: 2, fill: '#f0f9ff' }));
+    group.add(new Konva.Line({ points: [-6, -6, 6, 6], stroke: '#0284c7', strokeWidth: 1.8 }));
+    group.add(new Konva.Line({ points: [-6, 6, 6, -6], stroke: '#0284c7', strokeWidth: 1.8 }));
+
+  } else if (type === 'jbox') {
+    // Junction Box ('J' in small circle)
+    group.add(new Konva.Circle({ radius: 8, stroke: '#ea580c', strokeWidth: 1.8, fill: '#fff7ed' }));
+    group.add(new Konva.Text({ text: 'J', x: -3.5, y: -4.5, fontSize: 9, fill: '#c2410c', fontStyle: 'bold' }));
+
+  } else if (type === 'spitfire') {
+    // Spitfire emergency luminaire
+    group.add(new Konva.Circle({ radius: 8, stroke: '#15803d', strokeWidth: 2, fill: '#f0fdf4' }));
+    group.add(new Konva.Circle({ radius: 3, fill: '#dc2626' }));
+
+  } else if (type === 'switchboard') {
+    // Main Switchboard (MSB - half shaded / diagonal split)
+    group.add(new Konva.Rect({ x: -16, y: -10, width: 32, height: 20, stroke: '#0f172a', strokeWidth: 2, fill: '#ffffff' }));
+    group.add(new Konva.Line({ points: [-16, 10, 16, -10], stroke: '#0f172a', strokeWidth: 1.5 }));
+    group.add(new Konva.Text({ text: 'MSB', x: -12, y: -4, fontSize: 8, fill: '#0f172a', fontStyle: 'bold' }));
+
+  } else if (type === 'subboard') {
+    // Distribution Sub-Board (DB)
+    group.add(new Konva.Rect({ x: -14, y: -8, width: 28, height: 16, stroke: '#0f172a', strokeWidth: 2, fill: '#ffffff' }));
+    group.add(new Konva.Text({ text: 'DB', x: -7, y: -4, fontSize: 8, fill: '#0f172a', fontStyle: 'bold' }));
+  }
+
+  // --- Interaction Listeners ---
+  group.on('dragmove', () => {
+    const compType = group.getAttr('compType');
+    const snap = checkAlignmentSnap(group.x(), group.y(), group.id(), compType);
+    group.position({ x: snap.snappedX, y: snap.snappedY });
+    renderGuideLines(snap.lineX, snap.lineY);
+    updateConnectedWires();
+  });
+
+  group.on('dragend', () => {
+    clearGuideLines();
+  });
+
+  group.on('click tap', (e) => {
+    e.cancelBubble = true;
+    if (currentComponent === 'delete') {
+      deleteComponent(group);
+    } else if (currentComponent === 'wire') {
+      handleWiringClick(group);
+    }
+  });
+
+  return group;
 }
