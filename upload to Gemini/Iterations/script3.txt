@@ -694,14 +694,6 @@ function deleteUploadedPlan(fullClear = true) {
     if (!confirm("Are you sure you want to delete the current plan? This action cannot be undone.")) return;
   }
   if (planImageNode) { planImageNode.destroy(); planImageNode = null; }
-  // Clear any dropped rulers and scale stamps from the previous plan
-  electricalLayer.find('.component').filter(c => c.getAttr('compType') === 'ruler').forEach(r => r.destroy());
-  const oldStamp = underlayLayer.findOne('.scale-stamp');
-  if (oldStamp) oldStamp.destroy();
-  isPlanCalibrated = false;
-  scalePixelsPerMeter = 45;
-  resetTapeMeasure();
-  electricalLayer.batchDraw();
   const canvasEl = underlayLayer.getCanvas()._canvas;
   if (canvasEl) canvasEl.style.filter = 'none';
   underlayLayer.batchDraw();
@@ -1160,11 +1152,6 @@ function selectMeasureTool(targetMode = null) {
 }
 
 function startMeasureMode(mode) {
-  if (mode === 'ruler' && !isPlanCalibrated) {
-    alert("Please calibrate the plan scale first before dropping dimension lines.");
-    mode = 'calibrate';
-  }
-  
   measureMode = mode;
   resetTapeMeasure();
   closeMeasurePopover();
@@ -1172,7 +1159,7 @@ function startMeasureMode(mode) {
 }
 
 function clearAllRulers() {
-  closeClearPopover();
+  closeMeasurePopover();
   const rulers = electricalLayer.find(node => node.getAttr('compType') === 'ruler');
   if (rulers.length === 0) return;
   if (!confirm("Clear all dimension lines from the plan?")) return;
@@ -1371,7 +1358,7 @@ function renderMeasureOverlay(interactive = false) {
     let btnOffsetX = distText.width() + (6 * reverseScale);
 
     const actionBtn = new Konva.Group({ x: btnOffsetX, y: 0 });
-    const btnString = measureMode === 'calibrate' ? 'Set Scale' : '✓ Drop Ruler';
+    const btnString = measureMode === 'calibrate' ? '🟩 Set Scale' : '✓ Drop Ruler';
     const btnColor = measureMode === 'calibrate' ? '#10b981' : '#0284c7';
 
     const actionText = new Konva.Text({ text: btnString, fontSize: 13 * reverseScale, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * reverseScale });
@@ -1568,7 +1555,7 @@ function renderScaleStamp(p1, p2, mm) {
   const s = getComponentScale();
   const stampGroup = new Konva.Group({ name: 'scale-stamp', listening: false });
   stampGroup.setAttr('stampData', { p1, p2, mm });
-
+  
   stampGroup.add(new Konva.Line({
     points: [p1.x, p1.y, p2.x, p2.y],
     stroke: '#10b981',
@@ -1612,7 +1599,7 @@ function renderScaleStamp(p1, p2, mm) {
     fill: '#059669',
     cornerRadius: 4 * s
   });
-
+  
   badge.add(bg, txt);
   badge.offsetX(txt.width() / 2);
   badge.offsetY(txt.height() / 2);
@@ -1871,16 +1858,6 @@ function redo() {
   updateStatus();
 }
 
-function openHelpModal() {
-  closeClearPopover();
-  closeMeasurePopover();
-  document.getElementById('helpModal').style.display = 'flex';
-}
-
-function closeHelpModal() {
-  document.getElementById('helpModal').style.display = 'none';
-}
-
 function openQuoteModal() {
   closeClearPopover();
   const tbody = document.getElementById('takeoffBody');
@@ -1932,7 +1909,7 @@ function closeQuoteModal() {
    ========================================================================== */
 let studioCanvas, studioCtx;
 let studioTool = 'wall';
-let studioGridSnap = false;
+let studioGridSnap = true;
 
 let studioLines = [];
 let studioOpenings = [];
@@ -1955,10 +1932,8 @@ let studioStartPoint = null;
 let studioCurrentPoint = null;
 
 const STUDIO_GRID_SIZE = 20;
-const CORNER_SNAP_DIST = 32;
-const T_SNAP_DIST = 18;
-const CAD_ALIGN_THRESHOLD = 18;
-let studioAlignGuides = []; // Stores active CAD leveling extension lines
+const CORNER_SNAP_DIST = 26;
+const T_SNAP_DIST = 16;
 
 function initStudio() {
   studioCanvas = document.getElementById('studioCanvas');
@@ -2057,7 +2032,11 @@ function setStudioTool(tool) {
   renderStudio();
 }
 
-// Grid snap removed in favor of smart CAD corner alignment
+function toggleStudioGridSnap() {
+  studioGridSnap = !studioGridSnap;
+  const btn = document.getElementById('btnStudioSnap');
+  if (btn) btn.classList.toggle('active-toggle', studioGridSnap);
+}
 
 function checkOpeningCollision(candidate, ignoreIndex = -1) {
   const cHalf = candidate.length / 2;
@@ -2168,35 +2147,6 @@ function getStudioCanvasPoint(e) {
     }
   }
 
-  // 3. Smart CAD Alignment & Leveling Guides against other corners
-  studioAlignGuides = [];
-  if (!snapped && (studioTool === 'wall' || studioTool === 'room')) {
-    const alignThreshold = CAD_ALIGN_THRESHOLD / studioScale;
-    let alignedX = false;
-    let alignedY = false;
-
-    for (const l of studioLines) {
-      const endpoints = [{ x: l.x1, y: l.y1 }, { x: l.x2, y: l.y2 }];
-      for (const ep of endpoints) {
-        // Horizontal level alignment (shares ep.y)
-        if (!alignedY && Math.abs(y - ep.y) < alignThreshold) {
-          y = ep.y;
-          alignedY = true;
-          snapped = true; // Prevents grid-snap tug-of-war
-          studioAlignGuides.push({ type: 'horizontal', y: ep.y, sourceX: ep.x, sourceY: ep.y });
-        }
-        // Vertical plumb alignment (shares ep.x)
-        if (!alignedX && Math.abs(x - ep.x) < alignThreshold) {
-          x = ep.x;
-          alignedX = true;
-          snapped = true; // Prevents grid-snap tug-of-war
-          studioAlignGuides.push({ type: 'vertical', x: ep.x, sourceX: ep.x, sourceY: ep.y });
-        }
-      }
-    }
-  }
-
-  // 4. Background Grid Snap (only when not locked onto a corner or CAD guide)
   if (!snapped && studioGridSnap) {
     x = Math.round(x / STUDIO_GRID_SIZE) * STUDIO_GRID_SIZE;
     y = Math.round(y / STUDIO_GRID_SIZE) * STUDIO_GRID_SIZE;
@@ -2342,26 +2292,10 @@ function handleStudioPointerDown(e) {
   studioStartPoint = pt;
   studioCurrentPoint = pt;
 
-  if (studioTool === 'select' && selectedStudioEntity) {
-    if (selectedStudioEntity.type === 'opening') {
-      const op = studioOpenings[selectedStudioEntity.index];
-      if (Math.hypot(pt.x - op.x, pt.y - op.y) < 30 / studioScale) {
-        selectedStudioEntity.isDragging = true;
-      }
-    } else if (selectedStudioEntity.type === 'wall') {
-      const w = studioLines[selectedStudioEntity.index];
-      const hitDist = 24 / studioScale;
-      if (Math.hypot(pt.x - w.x1, pt.y - w.y1) < hitDist) {
-        selectedStudioEntity.isDraggingVertex = true;
-        selectedStudioEntity.dragVertex = 1; // Dragging (x1, y1)
-        selectedStudioEntity.origX = w.x1;
-        selectedStudioEntity.origY = w.y1;
-      } else if (Math.hypot(pt.x - w.x2, pt.y - w.y2) < hitDist) {
-        selectedStudioEntity.isDraggingVertex = true;
-        selectedStudioEntity.dragVertex = 2; // Dragging (x2, y2)
-        selectedStudioEntity.origX = w.x2;
-        selectedStudioEntity.origY = w.y2;
-      }
+  if (studioTool === 'select' && selectedStudioEntity && selectedStudioEntity.type === 'opening') {
+    const op = studioOpenings[selectedStudioEntity.index];
+    if (Math.hypot(pt.x - op.x, pt.y - op.y) < 30 / studioScale) {
+      selectedStudioEntity.isDragging = true;
     }
   }
 
@@ -2375,29 +2309,14 @@ function handleStudioPointerMove(e) {
 
   if (studioTool === 'wall') {
     pt = autoStraightenOrthogonal(studioStartPoint, pt);
-  } else if (studioTool === 'select' && selectedStudioEntity) {
-    if (selectedStudioEntity.isDragging && selectedStudioEntity.type === 'opening') {
-      const op = studioOpenings[selectedStudioEntity.index];
-      const candidate = findClosestWallForOpening(pt.x, pt.y, selectedStudioEntity.index);
-      if (candidate && !candidate.hasCollision) {
-        op.x = candidate.x;
-        op.y = candidate.y;
-        op.angle = candidate.angle;
-        op.wallRef = candidate.wall;
-      }
-    } else if (selectedStudioEntity.isDraggingVertex && selectedStudioEntity.type === 'wall') {
-      const w = studioLines[selectedStudioEntity.index];
-      const anchor = (selectedStudioEntity.dragVertex === 1) ? { x: w.x2, y: w.y2 } : { x: w.x1, y: w.y1 };
-      const aligned = autoStraightenOrthogonal(anchor, pt);
-
-      const oldX = (selectedStudioEntity.dragVertex === 1) ? w.x1 : w.x2;
-      const oldY = (selectedStudioEntity.dragVertex === 1) ? w.y1 : w.y2;
-
-      // Update all connected wall segments sharing this joint
-      studioLines.forEach(other => {
-        if (Math.hypot(other.x1 - oldX, other.y1 - oldY) < 1) { other.x1 = aligned.x; other.y1 = aligned.y; }
-        if (Math.hypot(other.x2 - oldX, other.y2 - oldY) < 1) { other.x2 = aligned.x; other.y2 = aligned.y; }
-      });
+  } else if (studioTool === 'select' && selectedStudioEntity && selectedStudioEntity.isDragging) {
+    const op = studioOpenings[selectedStudioEntity.index];
+    const candidate = findClosestWallForOpening(pt.x, pt.y, selectedStudioEntity.index);
+    if (candidate && !candidate.hasCollision) {
+      op.x = candidate.x;
+      op.y = candidate.y;
+      op.angle = candidate.angle;
+      op.wallRef = candidate.wall;
     }
   }
 
@@ -2420,10 +2339,8 @@ function handleStudioPointerUp(e) {
   let p2 = studioCurrentPoint;
   const isTap = p1 && p2 && Math.hypot(p2.x - p1.x, p2.y - p1.y) < 12 / studioScale;
 
-  if (selectedStudioEntity && (selectedStudioEntity.isDragging || selectedStudioEntity.isDraggingVertex)) {
+  if (selectedStudioEntity && selectedStudioEntity.isDragging) {
     selectedStudioEntity.isDragging = false;
-    selectedStudioEntity.isDraggingVertex = false;
-    unifyAllCollinearLines();
     recordStudioState();
     renderStudio();
     return;
@@ -2459,7 +2376,6 @@ function handleStudioPointerUp(e) {
 
   studioStartPoint = null;
   studioCurrentPoint = null;
-  studioAlignGuides = [];
   renderStudio();
 }
 
@@ -2511,8 +2427,6 @@ function hideEditHud() {
   if (hud) hud.style.display = 'none';
 }
 
-let hudDragState = null;
-
 function showEditHud() {
   const hud = document.getElementById('studioEditHud');
   const title = document.getElementById('studioEditTitle');
@@ -2522,105 +2436,48 @@ function showEditHud() {
   hud.style.display = 'flex';
   actions.innerHTML = '';
 
-  // Ensure header is built
-  let header = hud.querySelector('.studio-hud-header');
-  if (!header) {
-    header = document.createElement('div');
-    header.className = 'studio-hud-header';
-    hud.insertBefore(header, actions);
-
-    const titleWrapper = document.createElement('div');
-    titleWrapper.className = 'studio-hud-drag-title';
-    titleWrapper.innerHTML = `<span class="studio-drag-grip">⠿</span>`;
-    titleWrapper.appendChild(title);
-    header.appendChild(titleWrapper);
-
-    // Pointer drag listeners for moving the HUD out of the way
-
-    // Pointer drag listeners for moving the HUD out of the way
-    header.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      header.setPointerCapture(e.pointerId);
-      const rect = hud.getBoundingClientRect();
-      hudDragState = {
-        startX: e.clientX,
-        startY: e.clientY,
-        initialLeft: rect.left,
-        initialTop: rect.top
-      };
-      // Detach center alignment transform so direct pixel coordinates work
-      hud.style.transform = 'none';
-      hud.style.bottom = 'auto';
-      hud.style.left = rect.left + 'px';
-      hud.style.top = rect.top + 'px';
-    });
-
-    header.addEventListener('pointermove', (e) => {
-      if (!hudDragState) return;
-      e.stopPropagation();
-      const dx = e.clientX - hudDragState.startX;
-      const dy = e.clientY - hudDragState.startY;
-      const newLeft = Math.max(10, Math.min(window.innerWidth - hud.offsetWidth - 10, hudDragState.initialLeft + dx));
-      const newTop = Math.max(10, Math.min(window.innerHeight - hud.offsetHeight - 10, hudDragState.initialTop + dy));
-      hud.style.left = newLeft + 'px';
-      hud.style.top = newTop + 'px';
-    });
-
-    const stopHudDrag = (e) => {
-      if (hudDragState) {
-        e.stopPropagation();
-        try { header.releasePointerCapture(e.pointerId); } catch (_) { }
-        hudDragState = null;
-      }
-    };
-    header.addEventListener('pointerup', stopHudDrag);
-    header.addEventListener('pointercancel', stopHudDrag);
-  }
-
   let actionButtons = '';
 
   if (selectedStudioEntity.type === 'opening') {
     const op = studioOpenings[selectedStudioEntity.index];
     if (op.type === 'door') {
-      title.innerText = '🚪 Door Options';
+      title.innerText = '🚪 Door:';
       actionButtons = `
-        <button class="btn-hud" onclick="toggleDoorSwing()">🔄 Toggle Swing</button>
-        <button class="btn-hud" onclick="toggleDoorHinge()">🔀 Toggle Hinge</button>
-        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete Door</button>
+        <button class="btn-hud" onclick="toggleDoorSwing()">🔄 Swing</button>
+        <button class="btn-hud" onclick="toggleDoorHinge()">🔀 Hinge</button>
+        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
       `;
     } else if (op.type === 'slider') {
-      title.innerText = '🪟 Slider Options';
+      title.innerText = '🪟 Slider:';
       actionButtons = `
-        <button class="btn-hud" onclick="toggleDoorSwing()">🔄 Reverse Track</button>
-        <button class="btn-hud" onclick="toggleDoorHinge()">🔀 Flip Fixed Panel</button>
-        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete Slider</button>
+        <button class="btn-hud" onclick="toggleDoorSwing()">🔄 Track</button>
+        <button class="btn-hud" onclick="toggleDoorHinge()">🔀 Panel</button>
+        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
       `;
     } else if (op.type === 'window') {
-      title.innerText = '🪟 Window Options';
+      title.innerText = '🪟 Window:';
       actionButtons = `
-        <button class="btn-hud" onclick="cycleWindowWidth()">📏 Change Width</button>
-        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete Window</button>
+        <button class="btn-hud" onclick="cycleWindowWidth()">📏 Width</button>
+        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
       `;
     }
   } else if (selectedStudioEntity.type === 'label') {
-    title.innerText = '🏷️ Room Label';
+    title.innerText = '🏷️ Label:';
     actionButtons = `
-      <button class="btn-hud" onclick="renameSelectedLabel()">✏️ Rename Label</button>
-      <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete Label</button>
+      <button class="btn-hud" onclick="renameSelectedLabel()">✏️ Rename</button>
+      <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
     `;
   } else if (selectedStudioEntity.type === 'wall') {
     const w = studioLines[selectedStudioEntity.index];
-    const wLen = Math.round((Math.hypot(w.x2 - w.x1, w.y2 - w.y1) / scalePixelsPerMeter) * 1000);
-    title.innerText = w.isCavity ? `Cavity (${wLen}mm)` : `Wall (${wLen}mm)`;
+    title.innerText = w.isCavity ? '🧱🧱 Cavity Wall:' : '🧱 Wall:';
     actionButtons = `
-      <button class="btn-hud" onclick="stretchSelectedWall()">📐 Stretch Wall Length</button>
-      <button class="btn-hud" onclick="calibrateSelectedWall()">🌐 Calibrate Plan Scale</button>
-      <button class="btn-hud" onclick="toggleWallCavity()">🧱 Toggle Cavity Wall</button>
-      <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete Wall</button>
+      <button class="btn-hud" onclick="calibrateSelectedWall()">📏 Length</button>
+      <button class="btn-hud" onclick="toggleWallCavity()">🧱 Toggle Cavity</button>
+      <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
     `;
   }
 
-  actions.innerHTML = actionButtons;
+  actions.innerHTML = actionButtons + `<button class="btn-hud" onclick="dismissEditHud()" style="background: #0284c7; color: white; border-color: #38bdf8;">✓ Done</button>`;
 }
 
 function dismissEditHud() {
@@ -2675,68 +2532,6 @@ function toggleWallCavity() {
   w.isCavity = !w.isCavity;
   showEditHud();
   renderStudio();
-}
-
-function stretchSelectedWall() {
-  if (!selectedStudioEntity || selectedStudioEntity.type !== 'wall') return;
-  const w = studioLines[selectedStudioEntity.index];
-  const currentPx = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
-  const currentMm = Math.round((currentPx / scalePixelsPerMeter) * 1000);
-
-  const input = prompt(`Current wall length: ${currentMm}mm\n\nEnter new physical length for this wall in millimeters (e.g. 2400):`, currentMm);
-  if (!input) return;
-
-  const newMm = parseFloat(input);
-  if (newMm > 0 && currentPx > 0) {
-    recordStudioState();
-    const targetPx = (newMm / 1000) * scalePixelsPerMeter;
-    const ratio = targetPx / currentPx;
-
-    const oldX2 = w.x2;
-    const oldY2 = w.y2;
-    const newX2 = w.x1 + (w.x2 - w.x1) * ratio;
-    const newY2 = w.y1 + (w.y2 - w.y1) * ratio;
-
-    const dx = newX2 - oldX2;
-    const dy = newY2 - oldY2;
-
-    const isThisHoriz = Math.abs(w.y2 - w.y1) < 2;
-    const isThisVert = Math.abs(w.x2 - w.x1) < 2;
-
-    // Shift connected walls while keeping perpendicular walls square
-    studioLines.forEach((other, oIdx) => {
-      if (oIdx === selectedStudioEntity.index) return;
-
-      const connAtStart = Math.hypot(other.x1 - oldX2, other.y1 - oldY2) < 1;
-      const connAtEnd = Math.hypot(other.x2 - oldX2, other.y2 - oldY2) < 1;
-
-      if (!connAtStart && !connAtEnd) return;
-
-      const isOtherVert = Math.abs(other.x2 - other.x1) < 2;
-      const isOtherHoriz = Math.abs(other.y2 - other.y1) < 2;
-
-      // If this wall is horizontal and connected is vertical, slide entire vertical wall
-      if (isThisHoriz && isOtherVert) {
-        other.x1 += dx;
-        other.x2 += dx;
-      }
-      // If this wall is vertical and connected is horizontal, slide entire horizontal wall
-      else if (isThisVert && isOtherHoriz) {
-        other.y1 += dy;
-        other.y2 += dy;
-      }
-      // Otherwise adjust only the joint endpoint
-      else {
-        if (connAtStart) { other.x1 = newX2; other.y1 = newY2; }
-        if (connAtEnd) { other.x2 = newX2; other.y2 = newY2; }
-      }
-    });
-
-    w.x2 = newX2;
-    w.y2 = newY2;
-    showEditHud();
-    renderStudio();
-  }
 }
 
 function calibrateSelectedWall() {
@@ -2837,13 +2632,14 @@ function calibrateWallAt(x, y) {
   if (hitIndex === -1) return;
   const wall = studioLines[hitIndex];
   const pxLen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-  const currentMm = Math.round((pxLen / scalePixelsPerMeter) * 1000);
-  const realMmInput = prompt(`Current wall length: ${currentMm}mm\n\nEnter true physical length for this wall in millimeters to calibrate entire plan (e.g. 2400 or 6000):`, currentMm);
-  if (realMmInput) {
-    const enteredMm = parseFloat(realMmInput);
-    if (enteredMm > 0) {
+  const currentEst = (pxLen / scalePixelsPerMeter).toFixed(2);
+
+  const realM = prompt(`Enter true physical length for this wall in meters:`, currentEst);
+  if (realM) {
+    const meters = parseFloat(realM);
+    if (meters > 0) {
       recordStudioState();
-      scalePixelsPerMeter = pxLen / (enteredMm / 1000);
+      scalePixelsPerMeter = pxLen / meters;
       document.getElementById('lblScaleDisplay').innerText = `${scalePixelsPerMeter.toFixed(1)} px/m`;
 
       studioOpenings.forEach(op => {
@@ -2978,20 +2774,6 @@ function renderStudio() {
   studioLines.forEach((l, idx) => {
     const isSel = (selectedStudioEntity && selectedStudioEntity.type === 'wall' && selectedStudioEntity.index === idx);
     studioCtx.save();
-
-    if (isSel) {
-      // Draw interactive corner vertex handles for stretching
-      const handleR = 7 / studioScale;
-      [{ x: l.x1, y: l.y1 }, { x: l.x2, y: l.y2 }].forEach(pt => {
-        studioCtx.fillStyle = '#0284c7';
-        studioCtx.strokeStyle = '#ffffff';
-        studioCtx.lineWidth = 2 / studioScale;
-        studioCtx.beginPath();
-        studioCtx.arc(pt.x, pt.y, handleR, 0, Math.PI * 2);
-        studioCtx.fill();
-        studioCtx.stroke();
-      });
-    }
 
     if (l.isCavity) {
       studioCtx.strokeStyle = isSel ? '#0284c7' : '#0f172a';
@@ -3199,43 +2981,10 @@ function renderStudio() {
     studioCtx.restore();
   });
 
-  // Smart CAD Leveling & Alignment Extension Guides
-  if (isStudioDrawing && studioAlignGuides.length > 0) {
-    studioCtx.save();
-    studioCtx.strokeStyle = '#06b6d4';
-    studioCtx.lineWidth = 1.2 / studioScale;
-    studioCtx.setLineDash([5 / studioScale, 3 / studioScale]);
-
-    // Render guidelines clamped strictly to visible viewport boundaries
-    const viewLeft = -studioPanX / studioScale;
-    const viewRight = (w - studioPanX) / studioScale;
-    const viewTop = -studioPanY / studioScale;
-    const viewBottom = (h - studioPanY) / studioScale;
-
-    studioAlignGuides.forEach(g => {
-      studioCtx.beginPath();
-      if (g.type === 'horizontal') {
-        studioCtx.moveTo(viewLeft, g.y);
-        studioCtx.lineTo(viewRight, g.y);
-      } else if (g.type === 'vertical') {
-        studioCtx.moveTo(g.x, viewTop);
-        studioCtx.lineTo(g.x, viewBottom);
-      }
-      studioCtx.stroke();
-
-      // Highlight the anchor corner you are aligning with
-      studioCtx.fillStyle = '#06b6d4';
-      studioCtx.beginPath();
-      studioCtx.arc(g.sourceX, g.sourceY, 4 / studioScale, 0, Math.PI * 2);
-      studioCtx.fill();
-    });
-    studioCtx.restore();
-  }
-
   if (isStudioDrawing && studioStartPoint && studioCurrentPoint) {
     studioCtx.save();
     studioCtx.strokeStyle = '#2563eb';
-    studioCtx.lineWidth = 2.2;
+    studioCtx.lineWidth = 3.5;
     studioCtx.setLineDash([6, 4]);
 
     if (studioTool === 'wall') {
@@ -3285,7 +3034,7 @@ function finishAndApplyPlan() {
     oCtx.save();
     if (l.isCavity) {
       oCtx.strokeStyle = '#0f172a';
-      oCtx.lineWidth = 6.5;
+      oCtx.lineWidth = 10;
       oCtx.lineCap = 'round';
       oCtx.lineJoin = 'round';
       oCtx.beginPath();
@@ -3294,7 +3043,7 @@ function finishAndApplyPlan() {
       oCtx.stroke();
 
       oCtx.strokeStyle = '#ffffff';
-      oCtx.lineWidth = 3.0;
+      oCtx.lineWidth = 5;
       oCtx.lineCap = 'square';
       oCtx.beginPath();
       oCtx.moveTo(l.x1, l.y1);
@@ -3302,7 +3051,7 @@ function finishAndApplyPlan() {
       oCtx.stroke();
     } else {
       oCtx.strokeStyle = '#0f172a';
-      oCtx.lineWidth = 2.8;
+      oCtx.lineWidth = 4.5;
       oCtx.lineCap = 'round';
       oCtx.lineJoin = 'round';
       oCtx.beginPath();
@@ -3312,6 +3061,7 @@ function finishAndApplyPlan() {
     }
     oCtx.restore();
   });
+
   studioOpenings.forEach(op => {
     oCtx.save();
     oCtx.translate(op.x, op.y);

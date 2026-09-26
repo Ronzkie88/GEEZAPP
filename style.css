@@ -338,35 +338,128 @@ button,
   white-space: nowrap;
 }
 
+/* Vertical Floating Action Popover for Selected Element */
 #studioEditHud {
   display: none;
   position: absolute;
-  bottom: 12px;
+  bottom: calc(64px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(17, 24, 39, 0.96);
+  background: rgba(17, 24, 39, 0.98);
   border: 1px solid #38bdf8;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  padding: 6px 12px;
-  border-radius: 24px;
-  z-index: 25;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.65);
+  padding: 18px 12px 10px 12px;
+  border-radius: 14px;
+  z-index: 35;
+  flex-direction: column;
+  gap: 6px;
+  width: 220px;
+  max-width: calc(100vw - 32px);
+  user-select: none;
+}
+
+.studio-hud-header {
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  width: 100%;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #334155;
+  cursor: grab;
+  touch-action: none;
+}
+
+.studio-hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #334155;
+  cursor: grab;
+  touch-action: none;
+}
+
+.studio-hud-header:active {
+  cursor: grabbing;
+}
+
+.studio-hud-drag-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #38bdf8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+
+.studio-drag-grip {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #64748b;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+#studioEditActions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
 }
 
 .btn-hud {
   background: #1e293b;
   color: #f8fafc;
   border: 1px solid #334155;
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 11px;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 12px;
   font-weight: 600;
-  height: 28px;
+  height: 36px;
   cursor: pointer;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.btn-hud:active {
+  background: #334155;
+  border-color: #38bdf8;
+  transform: scale(0.98);
+}
+
+#studioEditTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: #38bdf8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-hud-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 14px;
+  padding: 2px 6px;
+  cursor: pointer;
+  line-height: 1;
+  height: auto;
+}
+
+#studioEditActions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
 }
 
 #studioCanvas {

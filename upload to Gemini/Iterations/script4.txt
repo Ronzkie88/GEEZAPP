@@ -1160,11 +1160,6 @@ function selectMeasureTool(targetMode = null) {
 }
 
 function startMeasureMode(mode) {
-  if (mode === 'ruler' && !isPlanCalibrated) {
-    alert("Please calibrate the plan scale first before dropping dimension lines.");
-    mode = 'calibrate';
-  }
-  
   measureMode = mode;
   resetTapeMeasure();
   closeMeasurePopover();
@@ -1172,7 +1167,7 @@ function startMeasureMode(mode) {
 }
 
 function clearAllRulers() {
-  closeClearPopover();
+  closeMeasurePopover();
   const rulers = electricalLayer.find(node => node.getAttr('compType') === 'ruler');
   if (rulers.length === 0) return;
   if (!confirm("Clear all dimension lines from the plan?")) return;
@@ -1871,16 +1866,6 @@ function redo() {
   updateStatus();
 }
 
-function openHelpModal() {
-  closeClearPopover();
-  closeMeasurePopover();
-  document.getElementById('helpModal').style.display = 'flex';
-}
-
-function closeHelpModal() {
-  document.getElementById('helpModal').style.display = 'none';
-}
-
 function openQuoteModal() {
   closeClearPopover();
   const tbody = document.getElementById('takeoffBody');
@@ -2511,8 +2496,6 @@ function hideEditHud() {
   if (hud) hud.style.display = 'none';
 }
 
-let hudDragState = null;
-
 function showEditHud() {
   const hud = document.getElementById('studioEditHud');
   const title = document.getElementById('studioEditTitle');
@@ -2522,105 +2505,49 @@ function showEditHud() {
   hud.style.display = 'flex';
   actions.innerHTML = '';
 
-  // Ensure header is built
-  let header = hud.querySelector('.studio-hud-header');
-  if (!header) {
-    header = document.createElement('div');
-    header.className = 'studio-hud-header';
-    hud.insertBefore(header, actions);
-
-    const titleWrapper = document.createElement('div');
-    titleWrapper.className = 'studio-hud-drag-title';
-    titleWrapper.innerHTML = `<span class="studio-drag-grip">⠿</span>`;
-    titleWrapper.appendChild(title);
-    header.appendChild(titleWrapper);
-
-    // Pointer drag listeners for moving the HUD out of the way
-
-    // Pointer drag listeners for moving the HUD out of the way
-    header.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      header.setPointerCapture(e.pointerId);
-      const rect = hud.getBoundingClientRect();
-      hudDragState = {
-        startX: e.clientX,
-        startY: e.clientY,
-        initialLeft: rect.left,
-        initialTop: rect.top
-      };
-      // Detach center alignment transform so direct pixel coordinates work
-      hud.style.transform = 'none';
-      hud.style.bottom = 'auto';
-      hud.style.left = rect.left + 'px';
-      hud.style.top = rect.top + 'px';
-    });
-
-    header.addEventListener('pointermove', (e) => {
-      if (!hudDragState) return;
-      e.stopPropagation();
-      const dx = e.clientX - hudDragState.startX;
-      const dy = e.clientY - hudDragState.startY;
-      const newLeft = Math.max(10, Math.min(window.innerWidth - hud.offsetWidth - 10, hudDragState.initialLeft + dx));
-      const newTop = Math.max(10, Math.min(window.innerHeight - hud.offsetHeight - 10, hudDragState.initialTop + dy));
-      hud.style.left = newLeft + 'px';
-      hud.style.top = newTop + 'px';
-    });
-
-    const stopHudDrag = (e) => {
-      if (hudDragState) {
-        e.stopPropagation();
-        try { header.releasePointerCapture(e.pointerId); } catch (_) { }
-        hudDragState = null;
-      }
-    };
-    header.addEventListener('pointerup', stopHudDrag);
-    header.addEventListener('pointercancel', stopHudDrag);
-  }
-
   let actionButtons = '';
 
   if (selectedStudioEntity.type === 'opening') {
     const op = studioOpenings[selectedStudioEntity.index];
     if (op.type === 'door') {
-      title.innerText = '🚪 Door Options';
+      title.innerText = '🚪 Door:';
       actionButtons = `
-        <button class="btn-hud" onclick="toggleDoorSwing()">🔄 Toggle Swing</button>
-        <button class="btn-hud" onclick="toggleDoorHinge()">🔀 Toggle Hinge</button>
-        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete Door</button>
+        <button class="btn-hud" onclick="toggleDoorSwing()">🔄 Swing</button>
+        <button class="btn-hud" onclick="toggleDoorHinge()">🔀 Hinge</button>
+        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
       `;
     } else if (op.type === 'slider') {
-      title.innerText = '🪟 Slider Options';
+      title.innerText = '🪟 Slider:';
       actionButtons = `
-        <button class="btn-hud" onclick="toggleDoorSwing()">🔄 Reverse Track</button>
-        <button class="btn-hud" onclick="toggleDoorHinge()">🔀 Flip Fixed Panel</button>
-        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete Slider</button>
+        <button class="btn-hud" onclick="toggleDoorSwing()">🔄 Track</button>
+        <button class="btn-hud" onclick="toggleDoorHinge()">🔀 Panel</button>
+        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
       `;
     } else if (op.type === 'window') {
-      title.innerText = '🪟 Window Options';
+      title.innerText = '🪟 Window:';
       actionButtons = `
-        <button class="btn-hud" onclick="cycleWindowWidth()">📏 Change Width</button>
-        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete Window</button>
+        <button class="btn-hud" onclick="cycleWindowWidth()">📏 Width</button>
+        <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
       `;
     }
   } else if (selectedStudioEntity.type === 'label') {
-    title.innerText = '🏷️ Room Label';
+    title.innerText = '🏷️ Label:';
     actionButtons = `
-      <button class="btn-hud" onclick="renameSelectedLabel()">✏️ Rename Label</button>
-      <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete Label</button>
+      <button class="btn-hud" onclick="renameSelectedLabel()">✏️ Rename</button>
+      <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
     `;
   } else if (selectedStudioEntity.type === 'wall') {
     const w = studioLines[selectedStudioEntity.index];
-    const wLen = Math.round((Math.hypot(w.x2 - w.x1, w.y2 - w.y1) / scalePixelsPerMeter) * 1000);
-    title.innerText = w.isCavity ? `Cavity (${wLen}mm)` : `Wall (${wLen}mm)`;
+    title.innerText = w.isCavity ? '🧱🧱 Cavity Wall:' : '🧱 Wall:';
     actionButtons = `
-      <button class="btn-hud" onclick="stretchSelectedWall()">📐 Stretch Wall Length</button>
-      <button class="btn-hud" onclick="calibrateSelectedWall()">🌐 Calibrate Plan Scale</button>
-      <button class="btn-hud" onclick="toggleWallCavity()">🧱 Toggle Cavity Wall</button>
-      <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete Wall</button>
+      <button class="btn-hud" onclick="stretchSelectedWall()" title="Stretch only this wall">📐 Stretch</button>
+      <button class="btn-hud" onclick="calibrateSelectedWall()" title="Calibrate entire plan scale">🌐 Calibrate Plan</button>
+      <button class="btn-hud" onclick="toggleWallCavity()">🧱 Toggle Cavity</button>
+      <button class="btn-hud" onclick="deleteSelectedStudioEntity()" style="color:#f87171;">🗑️ Delete</button>
     `;
   }
 
-  actions.innerHTML = actionButtons;
+  actions.innerHTML = actionButtons + `<button class="btn-hud" onclick="dismissEditHud()" style="background: #0284c7; color: white; border-color: #38bdf8;">✓ Done</button>`;
 }
 
 function dismissEditHud() {
@@ -2697,44 +2624,14 @@ function stretchSelectedWall() {
     const newX2 = w.x1 + (w.x2 - w.x1) * ratio;
     const newY2 = w.y1 + (w.y2 - w.y1) * ratio;
 
-    const dx = newX2 - oldX2;
-    const dy = newY2 - oldY2;
-
-    const isThisHoriz = Math.abs(w.y2 - w.y1) < 2;
-    const isThisVert = Math.abs(w.x2 - w.x1) < 2;
-
-    // Shift connected walls while keeping perpendicular walls square
-    studioLines.forEach((other, oIdx) => {
-      if (oIdx === selectedStudioEntity.index) return;
-
-      const connAtStart = Math.hypot(other.x1 - oldX2, other.y1 - oldY2) < 1;
-      const connAtEnd = Math.hypot(other.x2 - oldX2, other.y2 - oldY2) < 1;
-
-      if (!connAtStart && !connAtEnd) return;
-
-      const isOtherVert = Math.abs(other.x2 - other.x1) < 2;
-      const isOtherHoriz = Math.abs(other.y2 - other.y1) < 2;
-
-      // If this wall is horizontal and connected is vertical, slide entire vertical wall
-      if (isThisHoriz && isOtherVert) {
-        other.x1 += dx;
-        other.x2 += dx;
-      }
-      // If this wall is vertical and connected is horizontal, slide entire horizontal wall
-      else if (isThisVert && isOtherHoriz) {
-        other.y1 += dy;
-        other.y2 += dy;
-      }
-      // Otherwise adjust only the joint endpoint
-      else {
-        if (connAtStart) { other.x1 = newX2; other.y1 = newY2; }
-        if (connAtEnd) { other.x2 = newX2; other.y2 = newY2; }
-      }
+    // Shift endpoint and any connected walls sharing (x2, y2)
+    studioLines.forEach(other => {
+      if (Math.hypot(other.x1 - oldX2, other.y1 - oldY2) < 1) { other.x1 = newX2; other.y1 = newY2; }
+      if (Math.hypot(other.x2 - oldX2, other.y2 - oldY2) < 1) { other.x2 = newX2; other.y2 = newY2; }
     });
 
     w.x2 = newX2;
     w.y2 = newY2;
-    showEditHud();
     renderStudio();
   }
 }
