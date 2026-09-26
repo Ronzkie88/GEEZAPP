@@ -616,10 +616,45 @@ function updatePlanVisuals() {
   });
 }
 
+function recalculateAllDroppedRulers() {
+  if (!electricalLayer) return;
+  const s = getComponentScale();
+  const rulers = electricalLayer.find(node => node.getAttr('compType') === 'ruler');
+  
+  rulers.forEach(ruler => {
+    // Find the primary dimension line spanning the two anchor points
+    const lines = ruler.find('Line');
+    const mainLine = lines.find(l => l.name() !== 'ruler-leader' && l.points().length === 4);
+    if (!mainLine) return;
+    
+    const pts = mainLine.points();
+    const distPx = Math.hypot(pts[2] - pts[0], pts[3] - pts[1]);
+    const newMm = Math.round((distPx / scalePixelsPerMeter) * 1000);
+    
+    // Update text and adapt badge box sizing
+    const badge = ruler.findOne('.ruler-badge');
+    if (badge) {
+      const txt = badge.findOne('Text');
+      const bg = badge.findOne('Rect');
+      if (txt && bg) {
+        txt.text(newMm + 'mm');
+        txt.fontSize(13 * s);
+        txt.padding(5 * s);
+        bg.width(txt.width());
+        bg.height(txt.height());
+        bg.cornerRadius(4 * s);
+        badge.offsetX(txt.width() / 2);
+        badge.offsetY(txt.height() / 2);
+      }
+    }
+  });
+  electricalLayer.batchDraw();
+}
+
 function deletePlanScale() {
   if (!isPlanCalibrated) return;
   
-  if (confirm("Are you sure you want to delete the plan scale? Components will revert to default sizes.")) {
+  if (confirm("Are you sure you want to delete the plan scale? Dropped dimension lines will recalculate to default scale and components will revert to default sizes.")) {
     // Reset math to fallback
     scalePixelsPerMeter = 45; 
     isPlanCalibrated = false;
@@ -628,15 +663,22 @@ function deletePlanScale() {
     const lbl = document.getElementById('lblScaleDisplay');
     if (lbl) lbl.innerText = 'Default (45 px/m)';
     
-    // Find and destroy the green scale stamp on underlayLayer
-    const stamp = underlayLayer.findOne('.scale-stamp');
+    // Find and destroy the green scale stamp on electricalLayer
+    const stamp = electricalLayer.findOne('.scale-stamp') || underlayLayer.findOne('.scale-stamp');
     if (stamp) stamp.destroy();
     underlayLayer.batchDraw();
 
-    // Revert existing components to default scale using standard app helper
+    // Revert electrical fixtures only (exclude rulers to prevent coordinate warping)
     const s = getComponentScale();
     const comps = electricalLayer.find('.component');
-    comps.forEach(c => c.scale({ x: s, y: s }));
+    comps.forEach(c => {
+      if (c.getAttr('compType') !== 'ruler') {
+        c.scale({ x: s, y: s });
+      }
+    });
+    
+    // Dynamically recalculate all dropped dimension lines to the reset scale
+    recalculateAllDroppedRulers();
     electricalLayer.batchDraw();
   }
 }
@@ -753,7 +795,7 @@ function deleteUploadedPlan(fullClear = true) {
   if (planImageNode) { planImageNode.destroy(); planImageNode = null; }
   // Clear any dropped rulers and scale stamps from the previous plan
   electricalLayer.find('.component').filter(c => c.getAttr('compType') === 'ruler').forEach(r => r.destroy());
-  const oldStamp = underlayLayer.findOne('.scale-stamp');
+  const oldStamp = electricalLayer.findOne('.scale-stamp') || underlayLayer.findOne('.scale-stamp');
   if (oldStamp) oldStamp.destroy();
   isPlanCalibrated = false;
   scalePixelsPerMeter = 45;
@@ -1625,10 +1667,11 @@ function commitPersistentRuler(p1 = null, p2 = null, targetMm = null, rulerId = 
 }
 
 function renderScaleStamp(p1, p2, mm) {
-  const oldStamp = underlayLayer.findOne('.scale-stamp');
+  const oldStamp = electricalLayer.findOne('.scale-stamp') || underlayLayer.findOne('.scale-stamp');
   if (oldStamp) oldStamp.destroy();
 
   if (!p1 || !p2) {
+    electricalLayer.batchDraw();
     underlayLayer.batchDraw();
     return;
   }
@@ -1685,8 +1728,9 @@ function renderScaleStamp(p1, p2, mm) {
   badge.offsetX(txt.width() / 2);
   badge.offsetY(txt.height() / 2);
   stampGroup.add(badge);
-  underlayLayer.add(stampGroup);
-  underlayLayer.batchDraw();
+  electricalLayer.add(stampGroup);
+  stampGroup.moveToBottom();
+  electricalLayer.batchDraw();
 }
 
 function applyCalibrationValues(newScale, p1, p2, mm, recordHistory = true, oldScaleValue = null, prevStampData = null) {
@@ -1696,7 +1740,14 @@ function applyCalibrationValues(newScale, p1, p2, mm, recordHistory = true, oldS
 
   const s = getComponentScale();
   const comps = electricalLayer.find('.component');
-  comps.forEach(c => c.scale({ x: s, y: s }));
+  comps.forEach(c => {
+    if (c.getAttr('compType') !== 'ruler') {
+      c.scale({ x: s, y: s });
+    }
+  });
+  
+  // Dynamically recalculate all dropped dimension lines to the newly calibrated scale
+  recalculateAllDroppedRulers();
   electricalLayer.batchDraw();
 
   renderScaleStamp(p1, p2, mm);
