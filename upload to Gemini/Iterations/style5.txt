@@ -348,7 +348,7 @@ button,
   background: rgba(17, 24, 39, 0.98);
   border: 1px solid #38bdf8;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.65);
-  padding: 18px 12px 10px 12px;
+  padding: 10px 12px;
   border-radius: 14px;
   z-index: 35;
   flex-direction: column;
@@ -356,17 +356,6 @@ button,
   width: 220px;
   max-width: calc(100vw - 32px);
   user-select: none;
-}
-
-.studio-hud-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #334155;
-  cursor: grab;
-  touch-action: none;
 }
 
 .studio-hud-header {
@@ -397,13 +386,20 @@ button,
 }
 
 .studio-drag-grip {
-  position: absolute;
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
   color: #64748b;
-  font-size: 14px;
-  letter-spacing: 1px;
+  font-size: 12px;
+  letter-spacing: -1px;
+}
+
+.btn-hud-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 15px;
+  padding: 2px 6px;
+  cursor: pointer;
+  line-height: 1;
+  height: auto;
 }
 
 #studioEditActions {
@@ -434,6 +430,15 @@ button,
   background: #334155;
   border-color: #38bdf8;
   transform: scale(0.98);
+}
+
+.studio-hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #334155;
 }
 
 #studioEditTitle {

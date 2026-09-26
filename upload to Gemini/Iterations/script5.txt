@@ -1160,11 +1160,6 @@ function selectMeasureTool(targetMode = null) {
 }
 
 function startMeasureMode(mode) {
-  if (mode === 'ruler' && !isPlanCalibrated) {
-    alert("Please calibrate the plan scale first before dropping dimension lines.");
-    mode = 'calibrate';
-  }
-  
   measureMode = mode;
   resetTapeMeasure();
   closeMeasurePopover();
@@ -1172,7 +1167,7 @@ function startMeasureMode(mode) {
 }
 
 function clearAllRulers() {
-  closeClearPopover();
+  closeMeasurePopover();
   const rulers = electricalLayer.find(node => node.getAttr('compType') === 'ruler');
   if (rulers.length === 0) return;
   if (!confirm("Clear all dimension lines from the plan?")) return;
@@ -1871,16 +1866,6 @@ function redo() {
   updateStatus();
 }
 
-function openHelpModal() {
-  closeClearPopover();
-  closeMeasurePopover();
-  document.getElementById('helpModal').style.display = 'flex';
-}
-
-function closeHelpModal() {
-  document.getElementById('helpModal').style.display = 'none';
-}
-
 function openQuoteModal() {
   closeClearPopover();
   const tbody = document.getElementById('takeoffBody');
@@ -2522,7 +2507,7 @@ function showEditHud() {
   hud.style.display = 'flex';
   actions.innerHTML = '';
 
-  // Ensure header is built
+  // Setup draggable header once
   let header = hud.querySelector('.studio-hud-header');
   if (!header) {
     header = document.createElement('div');
@@ -2535,7 +2520,11 @@ function showEditHud() {
     titleWrapper.appendChild(title);
     header.appendChild(titleWrapper);
 
-    // Pointer drag listeners for moving the HUD out of the way
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'btn-hud-close';
+    closeBtn.innerHTML = '✕';
+    closeBtn.onclick = dismissEditHud;
+    header.appendChild(closeBtn);
 
     // Pointer drag listeners for moving the HUD out of the way
     header.addEventListener('pointerdown', (e) => {
@@ -2569,7 +2558,7 @@ function showEditHud() {
     const stopHudDrag = (e) => {
       if (hudDragState) {
         e.stopPropagation();
-        try { header.releasePointerCapture(e.pointerId); } catch (_) { }
+        try { header.releasePointerCapture(e.pointerId); } catch (_) {}
         hudDragState = null;
       }
     };

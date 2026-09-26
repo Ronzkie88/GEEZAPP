@@ -46,10 +46,6 @@
       Draw Plan</button>
     <button class="btn-quote" onclick="openQuoteModal(); toggleBurgerMenu();" style="width: 100%; height: 38px;">📊
       Quote</button>
-    <div style="height: 1px; background: #334155; margin: 4px 0;"></div>
-    <button class="btn-util" onclick="openHelpModal(); toggleBurgerMenu();"
-      style="width: 100%; height: 38px; background: transparent; border: 1px dashed #64748b; color: #94a3b8; font-size: 12px;">❓
-      Help & Guide</button>
   </div>
 
   <div id="tuningDrawer">
@@ -96,8 +92,7 @@
     <div id="welcomePill">
       👋 Welcome to ElecPOC
       <div class="welcome-sub">Tap <strong>Menu ☰</strong> to upload a plan, or <strong>🧰</strong> to drop components.
-        <strong>GEE u a biatch my budah!! Your Brudda Ronie is the MAN!</strong>
-      </div>
+        <strong>GEE u a biatch my budah!! Your Brudda Ronie is the MAN!</strong></div>
     </div>
     <div id="container"></div>
   </div>
@@ -148,8 +143,11 @@
         Measure Options</div>
       <button class="btn-util" onclick="startMeasureMode('ruler')"
         style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">📏 Ruler</button>
-      <button class="btn-util" onclick="startMeasureMode('calibrate')" i
-        style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">🟩 Set Scale</button>
+      <button class="btn-util" onclick="startMeasureMode('calibrate')"
+        style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">🟩 Calibrate Scale</button>
+      <button class="btn-del" onclick="clearAllRulers()"
+        style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">🗑️ Clear
+        Dimensions</button>
       <button class="btn-util" onclick="closeMeasurePopover()"
         style="height: 26px; font-size: 10px; background: transparent; color: #94a3b8;">Cancel</button>
     </div>
@@ -161,9 +159,6 @@
         Clear Options</div>
       <button class="btn-util" onclick="clearOnlyWires()"
         style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">⚡ Clear Wires Only</button>
-      <button class="btn-util" onclick="clearAllRulers()"
-        style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">📏 Clear All
-        Rulers</button>
       <button class="btn-del" onclick="clearAllLayout()"
         style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">💥 Clear
         Everything!</button>
@@ -263,56 +258,6 @@
     </div>
   </div>
 
-  <!-- HELP MODAL -->
-  <div id="helpModal"
-    style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); z-index: 100; align-items: center; justify-content: center; padding: 16px;"
-    onclick="if(event.target === this) closeHelpModal()">
-    <div class="modal-content" style="max-height: 85dvh; display: flex; flex-direction: column;">
-      <div
-        style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 16px;">
-        <h3 style="margin: 0; color: #0f172a;">App Help & Usage Guide</h3>
-        <button class="btn-util" onclick="closeHelpModal()"
-          style="height: 30px; padding: 2px 10px; border-radius: 6px; border: none; background: #e2e8f0; color: #475569; font-weight: bold; cursor: pointer;">✕</button>
-      </div>
-
-      <div style="overflow-y: auto; padding-right: 8px; font-size: 13px; line-height: 1.6; color: #334155;">
-        <h4 style="color: #0284c7; margin: 0 0 6px 0;">📷 Upload Plan</h4>
-        <p style="margin: 0 0 16px 0;">Upload a digital PDF or a flat, top-down photo of a paper plan. Crooked photos
-          will result in inaccurate scaling and cable lengths.</p>
-
-        <h4 style="color: #0284c7; margin: 0 0 6px 0;">✏️ Draw Plan Studio</h4>
-        <p style="margin: 0 0 16px 0;">If you don't have a plan, draw one.<br>
-          • <strong>Walls:</strong> Drag to sketch. Connected walls will auto-snap and merge.<br>
-          • <strong>Openings:</strong> Select a door or window tool, then tap on any drawn wall to instantly drop
-          it.<br>
-          • <strong>Editing:</strong> Tap the ✏️ Edit tool, then tap any drawn object on the canvas. A popup will allow
-          you to stretch lengths, flip door swings, toggle cavity walls, or delete.</p>
-
-        <h4 style="color: #0284c7; margin: 0 0 6px 0;">🧰 Component Library</h4>
-        <p style="margin: 0 0 16px 0;">Tap the toolbox to select electrical symbols. Once selected, tap anywhere on the
-          plan to place them. You can drag symbols around after placing them.</p>
-
-        <h4 style="color: #0284c7; margin: 0 0 6px 0;">⚡ Wiring Tools</h4>
-        <p style="margin: 0 0 16px 0;">Tap the Wire tool to select Power, Switch, or Data wiring. Tap the first
-          component, then tap the second to link them.<br>
-          • <strong>Adjusting:</strong> Tap any drawn wire with the 👆 Pointer tool to reveal a blue control handle.
-          Drag it to bend the wire routing.</p>
-
-        <h4 style="color: #0284c7; margin: 0 0 6px 0;">📏 Tape Measure & Calibration</h4>
-        <p style="margin: 0 0 4px 0;">Tap the Measure tool to reveal three options:</p>
-        <p style="margin: 0 0 16px 0; padding-left: 8px;">
-          • <strong>📏 Ruler:</strong> Drop a physical dimension line to measure a space. Tap "✓ Drop Ruler" to lock it
-          onto the canvas as a permanent reference.<br>
-          • <strong>🟩 Set Scale:</strong> Sets the plan's scale. Drag the handles across a known length (like an 820mm
-          door) and type in the real-world size.<br>
-          • <strong>🗑️ Clear Dimensions:</strong> Instantly wipes all dropped rulers off the canvas without deleting
-          your electrical components.
-        </p>
-      </div>
-    </div>
-  </div>
-
-  <!-- QUOTE MODAL -->
   <div id="quoteModal">
     <div class="modal-content">
       <h3 style="margin-top: 0;">Electrical Takeoff Estimate</h3>

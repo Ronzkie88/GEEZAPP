@@ -140,6 +140,38 @@ function bindEvents() {
   window.addEventListener('resize', resizeCanvas);
 }
 
+let isRulerModeActive = false;
+
+function toggleRulerMode() {
+  isRulerModeActive = !isRulerModeActive;
+  
+  const btnIcon = document.getElementById('rulerModeIcon');
+  const btnContainer = document.getElementById('btnRulerMode');
+  const activeToolBtn = document.getElementById('activeToolBtn'); // The 🧰 button
+  const wireBtn = document.getElementById('toolWire'); // The ⚡ Wire button
+
+  if (isRulerModeActive) {
+    btnIcon.innerText = '☑';
+    btnContainer.style.color = '#38bdf8';
+    btnContainer.style.borderColor = '#0284c7';
+    
+    activeToolBtn.style.display = 'none';
+    wireBtn.style.display = 'none';
+
+    // If they were holding a component or wire, switch them to the Pointer safely
+    if (currentComponent && currentComponent !== 'measure' && currentComponent !== 'delete') {
+      selectPointerTool();
+    }
+  } else {
+    btnIcon.innerText = '☐';
+    btnContainer.style.color = '#94a3b8';
+    btnContainer.style.borderColor = '#334155';
+    
+    activeToolBtn.style.display = 'inline-flex';
+    wireBtn.style.display = 'inline-flex';
+  }
+}
+
 function toggleBurgerMenu() {
   dismissWelcome();
   const menu = document.getElementById('burgerMenu');
@@ -458,7 +490,7 @@ function updateModeIndicatorUI() {
   } else if (currentComponent === 'delete') {
     indicator.style.background = 'rgba(127, 29, 29, 0.95)';
     indicator.style.borderColor = '#ef4444';
-    indicator.innerHTML = `🗑️ Delete Tool Active <span class="mode-subtext">— Tap item to remove</span>`;
+    indicator.innerHTML = `🗑️ Delete Tool Active <span class="mode-subtext">— Tap item to remove, tap again for more options.</span>`;
   } else if (currentComponent && CATALOG[currentComponent]) {
     indicator.style.background = 'rgba(5, 150, 105, 0.95)';
     indicator.style.borderColor = '#10b981';
@@ -582,6 +614,31 @@ function updatePlanVisuals() {
       }
     }
   });
+}
+
+function deletePlanScale() {
+  if (!isPlanCalibrated) return;
+  
+  if (confirm("Are you sure you want to delete the plan scale? Components will revert to default sizes.")) {
+    // Reset math to fallback
+    scalePixelsPerMeter = 45; 
+    isPlanCalibrated = false;
+    
+    // Update the UI text
+    const lbl = document.getElementById('lblScaleDisplay');
+    if (lbl) lbl.innerText = 'Default (45 px/m)';
+    
+    // Find and destroy the green scale stamp on underlayLayer
+    const stamp = underlayLayer.findOne('.scale-stamp');
+    if (stamp) stamp.destroy();
+    underlayLayer.batchDraw();
+
+    // Revert existing components to default scale using standard app helper
+    const s = getComponentScale();
+    const comps = electricalLayer.find('.component');
+    comps.forEach(c => c.scale({ x: s, y: s }));
+    electricalLayer.batchDraw();
+  }
 }
 
 function toggleTuningDrawer() {
@@ -1124,7 +1181,18 @@ function deleteComponent(node, recordHistory = true) {
 function toggleMeasurePopover() {
   closeClearPopover();
   const pop = document.getElementById('measurePopover');
-  if (pop) pop.style.display = (pop.style.display === 'flex') ? 'none' : 'flex';
+  
+  if (pop) {
+    pop.style.display = (pop.style.display === 'flex') ? 'none' : 'flex';
+    
+    // Update button text based on calibration status when opening
+    if (pop.style.display === 'flex') {
+      const calBtn = document.getElementById('btnCalibrateScale');
+      if (calBtn) {
+        calBtn.innerText = isPlanCalibrated ? '🟩 Reset Scale' : '🟩 Set Scale';
+      }
+    }
+  }
 }
 
 function closeMeasurePopover() {
@@ -1656,7 +1724,7 @@ function confirmMeasureCalibration() {
   const distPx = Math.hypot(measureCurrent.x - measureStart.x, measureCurrent.y - measureStart.y);
   const currentMm = Math.round((distPx / scalePixelsPerMeter) * 1000);
 
-  const input = prompt(`Current scale reading: ${currentMm}mm\n\nEnter true physical length in millimeters (e.g. 820 or 2550):`, currentMm);
+  const input = prompt(`Current scale reading: ${currentMm}mm\n\nEnter true physical length in millimeters (e.g. 820 or 2550):`, "");
   if (input) {
     const parsedMm = parseFloat(input);
     if (parsedMm > 0) {
