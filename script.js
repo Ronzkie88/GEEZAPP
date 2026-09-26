@@ -3,7 +3,7 @@ let planImageNode = null;
 let filterReqId = null;
 let opacityReqId = null;
 
-let currentComponent = null; 
+let currentComponent = null;
 let currentWireType = 'power';
 let currentWireRoutingStyle = 'curved';
 let selectedWireForEdit = null;
@@ -11,7 +11,7 @@ let multiTouchDetected = false;
 let isWelcomeActive = true;
 
 // Unified global scale (Pixels per Meter)
-let scalePixelsPerMeter = 45; 
+let scalePixelsPerMeter = 45;
 let isPlanCalibrated = false;
 
 // Tape Measure State
@@ -94,7 +94,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initStudio();
   bindEvents();
   setupPinchAndPan();
-  selectPointerTool(false); 
+  selectPointerTool(false);
 });
 
 function dismissWelcome() {
@@ -103,7 +103,7 @@ function dismissWelcome() {
   const pill = document.getElementById('welcomePill');
   if (pill) pill.style.display = 'none';
   const indicator = document.getElementById('modeIndicator');
-  if (indicator) indicator.style.display = 'block'; 
+  if (indicator) indicator.style.display = 'block';
   updateModeIndicatorUI();
 }
 
@@ -284,7 +284,7 @@ function selectComponentFromLibrary(type) {
   closeMeasurePopover();
 
   if (measureStart && measureCurrent) renderMeasureOverlay(false);
-  
+
   currentComponent = type;
   const item = CATALOG[type];
   document.getElementById('activeToolBtn').innerText = item.icon;
@@ -432,7 +432,7 @@ function resetWiringSelection() {
     try {
       const ring = wiringStartNode.findOne('.highlight-ring');
       if (ring) ring.destroy();
-    } catch (e) {}
+    } catch (e) { }
     wiringStartNode = null;
     electricalLayer.batchDraw();
   }
@@ -441,7 +441,7 @@ function resetWiringSelection() {
 function updateModeIndicatorUI() {
   const indicator = document.getElementById('modeIndicator');
   if (!indicator) return;
-  
+
   if (stage) stage.container().style.cursor = currentComponent ? 'crosshair' : 'default';
 
   if (currentComponent === 'wire') {
@@ -541,7 +541,7 @@ function setupPinchAndPan() {
 
       // INVERSE SCALE TO PREVENT MASSIVE HANDLES ON ZOOM OUT
       const handleScale = Math.min(2.0, 1 / newScale);
-      controlLayer.find('.wire-control-handle').forEach(h => h.scale({x: handleScale, y: handleScale}));
+      controlLayer.find('.wire-control-handle').forEach(h => h.scale({ x: handleScale, y: handleScale }));
 
       stage.batchDraw();
       lastDist = newDist;
@@ -576,8 +576,8 @@ function updatePlanVisuals() {
     if (canvasEl) {
       if (!enabled) canvasEl.style.filter = 'none';
       else {
-        const contrastVal = 100 + (rawContrast - 50) * 5;     
-        const brightnessVal = 100 + (rawBrightness - 50) * 1.5; 
+        const contrastVal = 100 + (rawContrast - 50) * 5;
+        const brightnessVal = 100 + (rawBrightness - 50) * 1.5;
         canvasEl.style.filter = `grayscale(100%) contrast(${Math.max(0, contrastVal)}%) brightness(${Math.max(10, brightnessVal)}%)`;
       }
     }
@@ -605,7 +605,7 @@ function resetPlanVisuals() {
 function processImageFile(file) {
   if (!file) return;
   dismissWelcome();
-  
+
   if (file.type === 'application/pdf') {
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -613,13 +613,13 @@ function processImageFile(file) {
         const typedarray = new Uint8Array(e.target.result);
         const pdf = await pdfjsLib.getDocument(typedarray).promise;
         const page = await pdf.getPage(1);
-        
+
         const viewport = page.getViewport({ scale: 2.5 });
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-        
+
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
         loadPlanImageFromUrl(canvas.toDataURL('image/png'));
       } catch (err) {
@@ -633,6 +633,18 @@ function processImageFile(file) {
     reader.readAsDataURL(file);
   } else {
     alert("Please upload a valid image or PDF file.");
+  }
+}
+
+function updateMeasureButtonState() {
+  const btn = document.getElementById('toolMeasure');
+  if (!btn) return;
+  const hasPlan = !!planImageNode;
+  btn.disabled = !hasPlan;
+  if (!hasPlan && currentComponent === 'measure') {
+    closeMeasurePopover();
+    resetTapeMeasure();
+    selectPointerTool();
   }
 }
 
@@ -660,6 +672,7 @@ function loadPlanImageFromUrl(dataUrl) {
     document.getElementById('btnToggleTune').style.display = 'inline-flex';
     document.getElementById('btnRecenter').style.display = 'inline-flex';
     updatePlanVisuals();
+    updateMeasureButtonState();
     requestAnimationFrame(resizeCanvas);
   };
   img.src = dataUrl;
@@ -684,7 +697,8 @@ function deleteUploadedPlan(fullClear = true) {
   const canvasEl = underlayLayer.getCanvas()._canvas;
   if (canvasEl) canvasEl.style.filter = 'none';
   underlayLayer.batchDraw();
-  
+  updateMeasureButtonState();
+
   if (fullClear) {
     document.getElementById('btnToggleTune').style.display = 'none';
     document.getElementById('btnRecenter').style.display = 'none';
@@ -707,7 +721,7 @@ function createSymbol(type, x, y, id) {
   const compId = id || ('comp_' + (++compIdCounter));
   const s = getComponentScale();
 
-  const group = new Konva.Group({ 
+  const group = new Konva.Group({
     x: x, y: y, scale: { x: s, y: s }, draggable: true, name: 'component', id: compId
   });
 
@@ -992,7 +1006,7 @@ function showWireControlHandle(w) {
     name: 'wire-control-handle',
     shadowColor: 'black',
     shadowBlur: 6,
-    scale: {x: handleScale, y: handleScale}
+    scale: { x: handleScale, y: handleScale }
   });
 
   let oldMidX = w.midX;
@@ -1085,10 +1099,10 @@ function deleteComponent(node, recordHistory = true) {
   updateStatus();
 
   if (recordHistory) {
-    undoStack.push({ 
-      action: 'delete_component', 
-      data, 
-      cascadeWires: attached.map(w => ({ id: w.id, fromId: w.fromId, toId: w.toId, type: w.type, routingStyle: w.routingStyle, midX: w.midX, midY: w.midY })) 
+    undoStack.push({
+      action: 'delete_component',
+      data,
+      cascadeWires: attached.map(w => ({ id: w.id, fromId: w.fromId, toId: w.toId, type: w.type, routingStyle: w.routingStyle, midX: w.midX, midY: w.midY }))
     });
     redoStack.length = 0;
     updateStatus();
@@ -1110,10 +1124,38 @@ function closeMeasurePopover() {
   if (pop) pop.style.display = 'none';
 }
 
+function selectMeasureTool(targetMode = null) {
+  currentComponent = 'measure';
+  if (targetMode) {
+    measureMode = targetMode;
+  } else if (!measureMode) {
+    measureMode = 'ruler';
+  }
+  resetWiringSelection();
+  clearWireControlHandle();
+  clearGuideLines();
+  closeClearPopover();
+
+  document.getElementById('toolMeasure').classList.add('selected');
+  document.getElementById('toolPointer').classList.remove('selected');
+  document.getElementById('toolDel').classList.remove('selected');
+  document.getElementById('toolWire').classList.remove('selected');
+  document.getElementById('activeToolBtn').innerText = '🧰';
+  document.getElementById('activeToolBtn').style.background = '#d97706';
+
+  if (measureStart && measureCurrent) {
+    renderMeasureOverlay(true);
+  }
+
+  updateModeIndicatorUI();
+  dismissWelcome();
+}
+
 function startMeasureMode(mode) {
   measureMode = mode;
+  resetTapeMeasure();
   closeMeasurePopover();
-  selectMeasureTool();
+  selectMeasureTool(mode);
 }
 
 function clearAllRulers() {
@@ -1156,7 +1198,7 @@ function resetTapeMeasure() {
 function handleMeasureStart(e) {
   if (multiTouchDetected || currentComponent !== 'measure') return;
   if (e.evt && e.evt.touches && e.evt.touches.length > 1) return;
-  
+
   if (e.target && (e.target.findAncestor('.measure-handle', true) || e.target.findAncestor('.measure-interactive', true))) return;
   if (measureStart && measureCurrent && !isMeasuring) return;
 
@@ -1201,7 +1243,7 @@ function handleMeasureEnd(e) {
 function createDraggableMeasureHandle(x, y, isStartHandle, reverseScale, lineNode, badgeGroup) {
   const group = new Konva.Group({ x: x, y: y, draggable: true, name: 'measure-handle' });
   const size = 14 * reverseScale;
-  
+
   const touchTarget = new Konva.Circle({ radius: 32 * reverseScale, fill: 'rgba(14, 165, 233, 0.12)', stroke: '#0ea5e9', strokeWidth: 1.5 * reverseScale });
   const centerDot = new Konva.Circle({ radius: 3 * reverseScale, fill: '#38bdf8' });
   const hLine = new Konva.Line({ points: [-size, 0, size, 0], stroke: '#38bdf8', strokeWidth: 1 * reverseScale });
@@ -1228,7 +1270,7 @@ function createDraggableMeasureHandle(x, y, isStartHandle, reverseScale, lineNod
 
     if (isStartHandle) measureStart = { x: candidateX, y: candidateY };
     else measureCurrent = { x: candidateX, y: candidateY };
-    
+
     updateMeasureGeometry(lineNode, badgeGroup, reverseScale);
   });
 
@@ -1238,12 +1280,26 @@ function createDraggableMeasureHandle(x, y, isStartHandle, reverseScale, lineNod
 
 function updateMeasureGeometry(lineNode, badgeGroup, reverseScale) {
   lineNode.points([measureStart.x, measureStart.y, measureCurrent.x, measureCurrent.y]);
-  const distPx = Math.hypot(measureCurrent.x - measureStart.x, measureCurrent.y - measureStart.y);
+  const dx = measureCurrent.x - measureStart.x;
+  const dy = measureCurrent.y - measureStart.y;
+  const distPx = Math.hypot(dx, dy) || 1;
   const mm = Math.round((distPx / scalePixelsPerMeter) * 1000) + 'mm';
+
   const midX = (measureStart.x + measureCurrent.x) / 2;
   const midY = (measureStart.y + measureCurrent.y) / 2;
+  const normX = -dy / distPx;
+  const normY = dx / distPx;
+  const offsetDist = 26 * reverseScale;
 
-  badgeGroup.position({ x: midX, y: midY - (22 * reverseScale) });
+  const badgeX = midX + normX * offsetDist;
+  const badgeY = midY + normY * offsetDist;
+
+  const leader = measureLayer.findOne('.measure-leader');
+  if (leader) {
+    leader.points([midX, midY, badgeX, badgeY]);
+  }
+
+  badgeGroup.position({ x: badgeX, y: badgeY });
   const txt = badgeGroup.findOne('.measure-text');
   if (txt) txt.text(mm);
   measureLayer.batchDraw();
@@ -1262,12 +1318,31 @@ function renderMeasureOverlay(interactive = false) {
   });
   measureLayer.add(line);
 
-  const distPx = Math.hypot(measureCurrent.x - measureStart.x, measureCurrent.y - measureStart.y);
+  const dx = measureCurrent.x - measureStart.x;
+  const dy = measureCurrent.y - measureStart.y;
+  const distPx = Math.hypot(dx, dy) || 1;
   const mm = Math.round((distPx / scalePixelsPerMeter) * 1000) + 'mm';
+
   const midX = (measureStart.x + measureCurrent.x) / 2;
   const midY = (measureStart.y + measureCurrent.y) / 2;
+  const normX = -dy / distPx;
+  const normY = dx / distPx;
+  const offsetDist = 26 * reverseScale;
 
-  const badgeGroup = new Konva.Group({ x: midX, y: midY - (22 * reverseScale), name: 'measure-interactive', listening: interactive });
+  const badgeX = midX + normX * offsetDist;
+  const badgeY = midY + normY * offsetDist;
+
+  const leader = new Konva.Line({
+    name: 'measure-leader',
+    points: [midX, midY, badgeX, badgeY],
+    stroke: '#dc2626',
+    strokeWidth: 2.5 * trueReverseScale,
+    dash: null,
+    listening: false
+  });
+  measureLayer.add(leader);
+
+  const badgeGroup = new Konva.Group({ x: badgeX, y: badgeY, name: 'measure-interactive', listening: interactive });
 
   const distText = new Konva.Text({
     text: mm, fontSize: 13 * reverseScale, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * reverseScale, name: 'measure-text'
@@ -1288,10 +1363,10 @@ function renderMeasureOverlay(interactive = false) {
 
     const actionText = new Konva.Text({ text: btnString, fontSize: 13 * reverseScale, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * reverseScale });
     const actionBg = new Konva.Rect({ width: actionText.width(), height: actionText.height(), fill: btnColor, cornerRadius: 4 * reverseScale });
-    
+
     actionBtn.add(actionBg, actionText);
-    actionBtn.on('click tap', (e) => { 
-      e.cancelBubble = true; 
+    actionBtn.on('click tap', (e) => {
+      e.cancelBubble = true;
       if (measureMode === 'calibrate') confirmMeasureCalibration();
       else commitPersistentRuler();
     });
@@ -1317,50 +1392,250 @@ function renderMeasureOverlay(interactive = false) {
   measureLayer.batchDraw();
 }
 
-function commitPersistentRuler() {
-  if (!measureStart || !measureCurrent) return;
-  const distPx = Math.hypot(measureCurrent.x - measureStart.x, measureCurrent.y - measureStart.y);
-  const mm = Math.round((distPx / scalePixelsPerMeter) * 1000);
+function commitPersistentRuler(p1 = null, p2 = null, targetMm = null, rulerId = null, recordHistory = true, customBadgePos = null) {
+  const startPt = p1 || measureStart;
+  const endPt = p2 || measureCurrent;
+  if (!startPt || !endPt) return;
+
+  const distPx = Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y);
+  const mm = targetMm !== null ? targetMm : Math.round((distPx / scalePixelsPerMeter) * 1000);
+  const id = rulerId || ('ruler_' + (++compIdCounter));
 
   const rulerGroup = new Konva.Group({
     name: 'component',
     compType: 'ruler',
-    draggable: true,
-    id: 'ruler_' + (++compIdCounter)
+    draggable: false, // Permanently locked in place
+    id: id
   });
 
-  const s = getComponentScale(); // Anchors size to the component layout, preventing zoom blowouts
+  const s = getComponentScale();
 
   rulerGroup.add(new Konva.Line({
-    points: [measureStart.x, measureStart.y, measureCurrent.x, measureCurrent.y],
+    points: [startPt.x, startPt.y, endPt.x, endPt.y],
     stroke: '#0ea5e9', strokeWidth: 2.5, dash: [8, 6], strokeScaleEnabled: false
   }));
 
-  const midX = (measureStart.x + measureCurrent.x) / 2;
-  const midY = (measureStart.y + measureCurrent.y) / 2;
+  const midX = (startPt.x + endPt.x) / 2;
+  const midY = (startPt.y + endPt.y) / 2;
+  const dx = endPt.x - startPt.x;
+  const dy = endPt.y - startPt.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const normX = -dy / dist;
+  const normY = dx / dist;
+  const offsetDist = 24 * s;
 
-  const badge = new Konva.Group({ x: midX, y: midY });
-  const txt = new Konva.Text({ text: mm + 'mm', fontSize: 14 * s, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * s });
+  const initBadgeX = customBadgePos ? customBadgePos.x : (midX + normX * offsetDist);
+  const initBadgeY = customBadgePos ? customBadgePos.y : (midY + normY * offsetDist);
+
+  // Architectural Red + Cross at Start (Fixture Center) - Bold
+  const crossSize = 7 * s;
+  const startCross = new Konva.Shape({
+    sceneFunc: (ctx, shape) => {
+      ctx.beginPath();
+      ctx.moveTo(startPt.x - crossSize, startPt.y);
+      ctx.lineTo(startPt.x + crossSize, startPt.y);
+      ctx.moveTo(startPt.x, startPt.y - crossSize);
+      ctx.lineTo(startPt.x, startPt.y + crossSize);
+      ctx.fillStrokeShape(shape);
+    },
+    stroke: '#dc2626',
+    strokeWidth: 4.0 * s,
+    strokeScaleEnabled: false
+  });
+  rulerGroup.add(startCross);
+
+  // Architectural Red T-bar at End (Wall/Surface Intersection) - Bold
+  const tBarSize = 10 * s;
+  const endTBar = new Konva.Line({
+    points: [
+      endPt.x - normX * tBarSize,
+      endPt.y - normY * tBarSize,
+      endPt.x + normX * tBarSize,
+      endPt.y + normY * tBarSize
+    ],
+    stroke: '#dc2626',
+    strokeWidth: 4.5 * s,
+    strokeScaleEnabled: false
+  });
+  rulerGroup.add(endTBar);
+
+  const leaderLine = new Konva.Line({
+    name: 'ruler-leader',
+    points: [midX, midY, initBadgeX, initBadgeY],
+    stroke: '#dc2626',
+    strokeWidth: 3.0 * s,
+    dash: null,
+    strokeScaleEnabled: false
+  });
+  rulerGroup.add(leaderLine);
+
+  const badge = new Konva.Group({
+    x: initBadgeX,
+    y: initBadgeY,
+    draggable: true,
+    name: 'ruler-badge'
+  });
+
+  const txt = new Konva.Text({ text: mm + 'mm', fontSize: 13 * s, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * s });
   const bg = new Konva.Rect({ width: txt.width(), height: txt.height(), fill: '#0284c7', cornerRadius: 4 * s });
-  
+
   badge.add(bg, txt);
   badge.offsetX(txt.width() / 2);
   badge.offsetY(txt.height() / 2);
+
+  let badgeDragStartX = initBadgeX;
+  let badgeDragStartY = initBadgeY;
+
+  badge.on('dragstart', () => {
+    badgeDragStartX = badge.x();
+    badgeDragStartY = badge.y();
+  });
+
+  badge.on('dragmove', () => {
+    leaderLine.points([midX, midY, badge.x(), badge.y()]);
+    electricalLayer.batchDraw();
+  });
+
+  badge.on('dragend', () => {
+    if (Math.hypot(badge.x() - badgeDragStartX, badge.y() - badgeDragStartY) > 2) {
+      undoStack.push({
+        action: 'move_ruler_badge',
+        id: rulerGroup.id(),
+        oldX: badgeDragStartX,
+        oldY: badgeDragStartY,
+        newX: badge.x(),
+        newY: badge.y()
+      });
+      redoStack.length = 0;
+      updateStatus();
+    }
+  });
+
   rulerGroup.add(badge);
 
   rulerGroup.on('click tap', (e) => {
     e.cancelBubble = true;
     if (currentComponent === 'delete') {
+      undoStack.push({
+        action: 'delete_ruler',
+        data: { id: rulerGroup.id(), p1: startPt, p2: endPt, mm: mm, badgePos: { x: badge.x(), y: badge.y() } }
+      });
+      redoStack.length = 0;
       rulerGroup.destroy();
       electricalLayer.batchDraw();
+      updateStatus();
     }
   });
 
   electricalLayer.add(rulerGroup);
   electricalLayer.batchDraw();
 
+  if (recordHistory) {
+    undoStack.push({
+      action: 'add_ruler',
+      data: { id: id, p1: startPt, p2: endPt, mm: mm, badgePos: { x: initBadgeX, y: initBadgeY } }
+    });
+    redoStack.length = 0;
+    updateStatus();
+  }
+
   resetTapeMeasure();
   selectPointerTool();
+}
+
+function renderScaleStamp(p1, p2, mm) {
+  const oldStamp = underlayLayer.findOne('.scale-stamp');
+  if (oldStamp) oldStamp.destroy();
+
+  if (!p1 || !p2) {
+    underlayLayer.batchDraw();
+    return;
+  }
+
+  const s = getComponentScale();
+  const stampGroup = new Konva.Group({ name: 'scale-stamp', listening: false });
+  stampGroup.setAttr('stampData', { p1, p2, mm });
+  
+  stampGroup.add(new Konva.Line({
+    points: [p1.x, p1.y, p2.x, p2.y],
+    stroke: '#10b981',
+    strokeWidth: 4.0,
+    dash: [10, 6],
+    strokeScaleEnabled: false
+  }));
+
+  const midX = (p1.x + p2.x) / 2;
+  const midY = (p1.y + p2.y) / 2;
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const normX = -dy / dist;
+  const normY = dx / dist;
+  const offsetDist = 20 * s;
+
+  const badgeX = midX + normX * offsetDist;
+  const badgeY = midY + normY * offsetDist;
+
+  stampGroup.add(new Konva.Line({
+    points: [midX, midY, badgeX, badgeY],
+    stroke: '#10b981',
+    strokeWidth: 2.5,
+    dash: [4, 3],
+    strokeScaleEnabled: false
+  }));
+
+  const badge = new Konva.Group({ x: badgeX, y: badgeY });
+  const txt = new Konva.Text({
+    text: 'Scale: ' + mm + 'mm',
+    fontSize: 12 * s,
+    fontFamily: '-apple-system, sans-serif',
+    fontStyle: 'bold',
+    fill: '#ffffff',
+    padding: 4 * s
+  });
+  const bg = new Konva.Rect({
+    width: txt.width(),
+    height: txt.height(),
+    fill: '#059669',
+    cornerRadius: 4 * s
+  });
+  
+  badge.add(bg, txt);
+  badge.offsetX(txt.width() / 2);
+  badge.offsetY(txt.height() / 2);
+  stampGroup.add(badge);
+  underlayLayer.add(stampGroup);
+  underlayLayer.batchDraw();
+}
+
+function applyCalibrationValues(newScale, p1, p2, mm, recordHistory = true, oldScaleValue = null, prevStampData = null) {
+  const prevScale = oldScaleValue !== null ? oldScaleValue : scalePixelsPerMeter;
+  scalePixelsPerMeter = newScale;
+  isPlanCalibrated = true;
+
+  const s = getComponentScale();
+  const comps = electricalLayer.find('.component');
+  comps.forEach(c => c.scale({ x: s, y: s }));
+  electricalLayer.batchDraw();
+
+  renderScaleStamp(p1, p2, mm);
+
+  const displayEl = document.getElementById('lblScaleDisplay');
+  if (displayEl) {
+    displayEl.innerText = mm ? `${mm}mm` : `${newScale.toFixed(1)} px/m`;
+  }
+
+  if (recordHistory) {
+    undoStack.push({
+      action: 'calibrate_scale',
+      oldScale: prevScale,
+      newScale: newScale,
+      oldStamp: prevStampData,
+      newStamp: { p1, p2, mm }
+    });
+    redoStack.length = 0;
+    updateStatus();
+  }
 }
 
 function confirmMeasureCalibration() {
@@ -1373,42 +1648,13 @@ function confirmMeasureCalibration() {
     const parsedMm = parseFloat(input);
     if (parsedMm > 0) {
       const parsedMeters = parsedMm / 1000;
-      scalePixelsPerMeter = distPx / parsedMeters;
-      isPlanCalibrated = true;
+      const newScale = distPx / parsedMeters;
 
-      const s = getComponentScale();
-      const comps = electricalLayer.find('.component');
-      comps.forEach(c => c.scale({ x: s, y: s }));
-      electricalLayer.batchDraw();
+      const existingStamp = underlayLayer.findOne('.scale-stamp');
+      const prevStampData = existingStamp ? existingStamp.getAttr('stampData') : null;
 
-      alert(`Plan calibrated successfully: ${parsedMm}mm (${scalePixelsPerMeter.toFixed(1)} px/m)`);
-
-      const oldStamp = underlayLayer.findOne('.scale-stamp');
-      if (oldStamp) oldStamp.destroy();
-
-      const stampGroup = new Konva.Group({ name: 'scale-stamp', listening: false });
-      
-      stampGroup.add(new Konva.Line({
-        points: [measureStart.x, measureStart.y, measureCurrent.x, measureCurrent.y],
-        stroke: '#10b981', strokeWidth: 2.5, dash: [8, 6], strokeScaleEnabled: false
-      }));
-
-      const midX = (measureStart.x + measureCurrent.x) / 2;
-      const midY = (measureStart.y + measureCurrent.y) / 2;
-
-      const badge = new Konva.Group({ x: midX, y: midY });
-      const txt = new Konva.Text({ text: 'Scale: ' + parsedMm + 'mm', fontSize: 13 * s, fontFamily: '-apple-system, sans-serif', fontStyle: 'bold', fill: '#ffffff', padding: 5 * s });
-      const bg = new Konva.Rect({ width: txt.width(), height: txt.height(), fill: '#059669', cornerRadius: 4 * s });
-      
-      badge.add(bg, txt);
-      badge.offsetX(txt.width() / 2);
-      badge.offsetY(txt.height() / 2);
-      stampGroup.add(badge);
-
-      underlayLayer.add(stampGroup);
-      underlayLayer.batchDraw();
-
-      document.getElementById('lblScaleDisplay').innerText = `${parsedMm}mm`;
+      applyCalibrationValues(newScale, measureStart, measureCurrent, parsedMm, true, scalePixelsPerMeter, prevStampData);
+      alert(`Plan calibrated successfully: ${parsedMm}mm (${newScale.toFixed(1)} px/m)`);
 
       resetTapeMeasure();
       selectPointerTool();
@@ -1495,6 +1741,40 @@ function undo() {
     });
     electricalLayer.batchDraw();
     entry.wires.forEach(w => createWire(w.fromId, w.toId, w.id, false, w.type, w.routingStyle, w.midX, w.midY));
+  } else if (entry.action === 'add_ruler') {
+    const r = electricalLayer.findOne('#' + entry.data.id);
+    if (r) {
+      r.destroy();
+      electricalLayer.batchDraw();
+    }
+  } else if (entry.action === 'delete_ruler') {
+    commitPersistentRuler(entry.data.p1, entry.data.p2, entry.data.mm, entry.data.id, false, entry.data.badgePos);
+  } else if (entry.action === 'move_ruler_badge') {
+    const r = electricalLayer.findOne('#' + entry.id);
+    if (r) {
+      const b = r.findOne('.ruler-badge');
+      const leader = r.findOne('.ruler-leader');
+      if (b) b.position({ x: entry.oldX, y: entry.oldY });
+      if (leader) {
+        const pts = leader.points();
+        leader.points([pts[0], pts[1], entry.oldX, entry.oldY]);
+      }
+      electricalLayer.batchDraw();
+    }
+  } else if (entry.action === 'calibrate_scale') {
+    if (entry.oldStamp) {
+      applyCalibrationValues(entry.oldScale, entry.oldStamp.p1, entry.oldStamp.p2, entry.oldStamp.mm, false);
+    } else {
+      // Revert to uncalibrated default without destroying dimension lines or components
+      scalePixelsPerMeter = entry.oldScale;
+      isPlanCalibrated = false;
+      renderScaleStamp(null, null, null);
+      const s = getComponentScale();
+      electricalLayer.find('.component').forEach(c => c.scale({ x: s, y: s }));
+      electricalLayer.batchDraw();
+      const displayEl = document.getElementById('lblScaleDisplay');
+      if (displayEl) displayEl.innerText = 'Default (45 px/m)';
+    }
   }
 
   redoStack.push(entry);
@@ -1548,6 +1828,30 @@ function redo() {
     electricalLayer.find('.component').forEach(c => c.destroy());
     electricalLayer.batchDraw();
     Object.keys(CATALOG).forEach(k => counts[k] = 0);
+  } else if (entry.action === 'add_ruler') {
+    commitPersistentRuler(entry.data.p1, entry.data.p2, entry.data.mm, entry.data.id, false, entry.data.badgePos);
+  } else if (entry.action === 'move_ruler_badge') {
+    const r = electricalLayer.findOne('#' + entry.id);
+    if (r) {
+      const b = r.findOne('.ruler-badge');
+      const leader = r.findOne('.ruler-leader');
+      if (b) b.position({ x: entry.newX, y: entry.newY });
+      if (leader) {
+        const pts = leader.points();
+        leader.points([pts[0], pts[1], entry.newX, entry.newY]);
+      }
+      electricalLayer.batchDraw();
+    }
+  } else if (entry.action === 'delete_ruler') {
+    const r = electricalLayer.findOne('#' + entry.data.id);
+    if (r) {
+      r.destroy();
+      electricalLayer.batchDraw();
+    }
+  } else if (entry.action === 'calibrate_scale') {
+    if (entry.newStamp) {
+      applyCalibrationValues(entry.newScale, entry.newStamp.p1, entry.newStamp.p2, entry.newStamp.mm, false);
+    }
   }
 
   undoStack.push(entry);
@@ -1576,7 +1880,7 @@ function openQuoteModal() {
       const pts = w.lineNode.points();
       let pxLength = 0;
       for (let i = 0; i < pts.length - 2; i += 2) {
-        pxLength += Math.hypot(pts[i+2] - pts[i], pts[i+3] - pts[i+1]);
+        pxLength += Math.hypot(pts[i + 2] - pts[i], pts[i + 3] - pts[i + 1]);
       }
       totalMeters += (pxLength / scalePixelsPerMeter) * 1.15;
     }

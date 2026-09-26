@@ -253,6 +253,25 @@ button,
   border-color: #38bdf8;
 }
 
+.btn-comp:disabled,
+.btn-comp[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(80%);
+}
+
+.btn-measure:disabled,
+.btn-measure[disabled] {
+  background: #1e293b !important;
+  color: #64748b !important;
+  border: 1px solid #334155 !important;
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  box-shadow: none !important;
+}
+
 .btn-quote {
   background: #10b981;
   color: white;

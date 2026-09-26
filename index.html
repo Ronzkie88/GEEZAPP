@@ -12,7 +12,7 @@
   <div id="topBar">
     <div class="top-group">
       <button class="btn-util" onclick="toggleBurgerMenu()" style="font-size: 18px; padding: 4px 10px; height: 38px;">☰</button>
-      <button class="btn-util" id="btnToggleTune" onclick="toggleTuningDrawer()" style="display: none;">⚙️ Adjust</button>
+      <button class="btn-util" id="btnToggleTune" onclick="toggleTuningDrawer()" style="display: none;">⚙️ Plan Settings</button>
       <button class="btn-util" id="btnRecenter" onclick="recenterPlan()" style="display: none; align-items: center; justify-content: center;" title="Reset zoom and center plan">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="15 3 21 3 21 9"></polyline>
@@ -67,7 +67,7 @@
 
     <div style="display: flex; gap: 8px; margin-top: 6px; border-top: 1px solid #334155; padding-top: 10px;">
       <button class="btn-util" onclick="resetPlanVisuals()" style="height: 38px; padding: 6px 10px; flex: 1;">🔄 Reset</button>
-      <button class="btn-del" onclick="deleteUploadedPlan()" style="height: 38px; padding: 6px 10px; flex: 1;">🗑️ Delete</button>
+      <button class="btn-del" onclick="deleteUploadedPlan()" style="height: 38px; padding: 6px 10px; flex: 1;">🗑️ Delete Plan</button>
       <button class="btn-util" onclick="toggleTuningDrawer()" style="height: 38px; padding: 6px 12px;">Close</button>
     </div>
   </div>
@@ -75,7 +75,7 @@
   <div id="workspace">
     <div id="welcomePill">
       👋 Welcome to ElecPOC
-      <div class="welcome-sub">Tap <strong>☰</strong> to upload a plan, or <strong>🧰</strong> to drop components.</div>
+      <div class="welcome-sub">Tap <strong>Menu ☰</strong> to upload a plan, or <strong>🧰</strong> to drop components. <strong>GEE u a biatch my budah!! Your Brudda Ronie is the MAN!</strong></div>
     </div>
     <div id="container"></div>
   </div>
@@ -87,7 +87,7 @@
       <div class="bottom-group">
         <button class="btn-library" onclick="openLibraryModal()" id="activeToolBtn" title="Component Library">🧰</button>
         <button class="btn-comp btn-wire" onclick="openWireModal()" id="toolWire">⚡ Wire</button>
-        <button class="btn-comp btn-measure" onclick="toggleMeasurePopover()" id="toolMeasure" style="display:flex; align-items:center; justify-content:center; padding:0 10px; background:#0284c7; color:white; border:1px solid #38bdf8;">📐 Measure</button>
+        <button class="btn-comp btn-measure" onclick="toggleMeasurePopover()" id="toolMeasure" disabled style="display:flex; align-items:center; justify-content:center; padding:0 10px; background:#0284c7; color:white; border:1px solid #38bdf8;">📐 Measure</button>
       </div>
       
       <div class="bottom-group">
@@ -114,7 +114,7 @@
     <!-- MEASURE POPOVER -->
     <div id="measurePopover" style="display: none; position: absolute; bottom: calc(56px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); background: #1e293b; border: 1px solid #0ea5e9; border-radius: 10px; padding: 12px; z-index: 50; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6); flex-direction: column; gap: 8px; width: 190px;">
       <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px;">Measure Options</div>
-      <button class="btn-util" onclick="startMeasureMode('ruler')" style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">📏 Drop Dimension Line</button>
+      <button class="btn-util" onclick="startMeasureMode('ruler')" style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">📏 Ruler</button>
       <button class="btn-util" onclick="startMeasureMode('calibrate')" style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">🟩 Calibrate Scale</button>
       <button class="btn-del" onclick="clearAllRulers()" style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">🗑️ Clear Dimensions</button>
       <button class="btn-util" onclick="closeMeasurePopover()" style="height: 26px; font-size: 10px; background: transparent; color: #94a3b8;">Cancel</button>
@@ -124,7 +124,7 @@
     <div id="clearPopover" style="display: none; position: absolute; bottom: calc(56px + var(--safe-bottom)); right: 14px; background: #1e293b; border: 1px solid #ef4444; border-radius: 10px; padding: 12px; z-index: 50; box-shadow: 0 10px 25px rgba(0,0,0,0.6); flex-direction: column; gap: 8px; width: 190px;">
       <div style="font-size: 11px; font-weight: 700; color: #f87171; text-transform: uppercase; letter-spacing: 0.5px;">Clear Options</div>
       <button class="btn-util" onclick="clearOnlyWires()" style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">⚡ Clear Wires Only</button>
-      <button class="btn-del" onclick="clearAllLayout()" style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">💥 Clear Everything</button>
+      <button class="btn-del" onclick="clearAllLayout()" style="height: 34px; font-size: 11px; justify-content: flex-start; padding: 0 10px;">💥 Clear Everything!</button>
       <button class="btn-util" onclick="closeClearPopover()" style="height: 26px; font-size: 10px; background: transparent; color: #94a3b8;">Cancel</button>
     </div>
   </div>
